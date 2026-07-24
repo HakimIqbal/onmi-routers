@@ -4,11 +4,13 @@ go 1.25.12
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.47.0
+	github.com/cloudflare/cloudflare-go/v7 v7.7.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.21.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.22.0
+	modernc.org/sqlite v1.54.0
 )
 
 require (
@@ -19,7 +21,6 @@ require (
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cloudflare/cloudflare-go/v7 v7.7.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
@@ -69,5 +70,4 @@ require (
 	modernc.org/libc v1.74.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.54.0 // indirect
 )

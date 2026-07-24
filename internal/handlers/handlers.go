@@ -61,16 +61,18 @@ func HandleHealthMinimal() gin.HandlerFunc {
 }
 
 // HandleHealth reports overall status + (when authed) per-upstream telemetry.
-func HandleHealth(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, am *auth.Manager, sessions *auth.SessionStore) gin.HandlerFunc {
+func HandleHealth(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, am *auth.Manager, sessions *auth.SessionStore, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		grokStats := hc.Grok.Stats()
 		cbStats := hc.CB.Stats()
+		cfStats := hc.CF.Stats()
 
 		// Overall status: unhealthy if any circuit is open
 		grokCircuit := grokStats["circuit_state"].(string)
 		cbCircuit := cbStats["circuit_state"].(string)
+		cfCircuit := cfStats["circuit_state"].(string)
 		overall := "healthy"
-		if grokCircuit == "open" || cbCircuit == "open" {
+		if grokCircuit == "open" || cbCircuit == "open" || cfCircuit == "open" {
 			overall = "degraded"
 		}
 
@@ -102,7 +104,7 @@ func HandleHealth(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 		if !authed {
 			c.JSON(200, gin.H{
 				"status":  overall,
-				"service": "foxrouters",
+				"service": "onmi-routers",
 				"version": version,
 			})
 			return
@@ -111,18 +113,29 @@ func HandleHealth(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 		// Authed: full telemetry
 		c.JSON(200, gin.H{
 			"status":  overall,
-			"service": "foxrouters",
+			"service": "onmi-routers",
 			"version": version,
-			"mode":    "unified (grok + codebuddy)",
+			"mode":    "unified (grok + codebuddy + cloudflare)",
 			"upstreams": gin.H{
 				"grok":      grokStats,
 				"codebuddy": cbStats,
+				"cloudflare": cfStats,
 			},
 			"grok_accounts": grokAM.Len(),
 			"cb_keys":       cbKM.Len(),
 			"cb_keys_active": func() int {
 				active := 0
 				for _, k := range cbKM.GetAll() {
+					if _, _, disabled := k.Stats(); !disabled {
+						active++
+					}
+				}
+				return active
+			}(),
+			"cf_accounts": cfKM.Len(),
+			"cf_accounts_active": func() int {
+				active := 0
+				for _, k := range cfKM.GetAll() {
 					if _, _, disabled := k.Stats(); !disabled {
 						active++
 					}
@@ -997,7 +1010,7 @@ func HandleDeleteCBKey(cbKM *upstream.CBKeyManager) gin.HandlerFunc {
 
 // HandleCleanupDisabled removes all permanently disabled keys/accounts.
 // Query param ?type=grok|cb|all (default: all)
-func HandleCleanupDisabled(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager) gin.HandlerFunc {
+func HandleCleanupDisabled(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		typ := c.DefaultQuery("type", "all")
 		result := gin.H{"type": typ}
@@ -1012,16 +1025,196 @@ func HandleCleanupDisabled(grokAM *upstream.GrokAccountManager, cbKM *upstream.C
 			result["cb_removed"] = removed
 			result["cb_remaining"] = cbKM.Len()
 		}
+		if typ == "cf" || typ == "all" {
+			removed := cfKM.CleanupDisabled()
+			result["cf_removed"] = removed
+			result["cf_remaining"] = cfKM.Len()
+		}
 
 		slog.Info("cleanup disabled", "module", "admin", "type", typ,
-			"grok_removed", result["grok_removed"], "cb_removed", result["cb_removed"])
+			"grok_removed", result["grok_removed"], "cb_removed", result["cb_removed"], "cf_removed", result["cf_removed"])
 		c.JSON(200, result)
 	}
 }
 
-// HandleCleanupBanned removes all banned Grok accounts (token_status == "banned").
-// Query param ?type=grok|all (default: grok). CB has no "banned" status.
-// Note: banned ≡ permanently disabled (disabled && disabledAt zero). Cooldown preserved.
+// ===========================================================================
+// CLOUDFLARE (cf/*) HANDLERS
+// ===========================================================================
+
+// HandleImportCFKey hot-imports a Cloudflare account (account_id:token) into
+// the runtime pool + Redis. Body: {"account_id":"...","token":"..."} or
+// {"key":"account_id:token"}. Idempotent — existing accounts return added=false.
+func HandleImportCFKey(cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			AccountID string `json:"account_id"`
+			Token     string `json:"token"`
+			Key       string `json:"key"` // alternative: "account_id:token"
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON body"})
+			return
+		}
+		var accountID, token string
+		if req.Key != "" {
+			parts := strings.SplitN(req.Key, ":", 2)
+			if len(parts) == 2 {
+				accountID, token = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+			} else {
+				token = strings.TrimSpace(req.Key)
+			}
+		} else {
+			accountID = strings.TrimSpace(req.AccountID)
+			token = strings.TrimSpace(req.Token)
+		}
+		if token == "" {
+			c.JSON(400, gin.H{"error": "account_id + token (or key=account_id:token) is required"})
+			return
+		}
+		added, total := cfKM.AddKey(accountID, token)
+		display := token
+		if len(display) > 12 {
+			display = display[:8] + "..." + display[len(display)-4:]
+		}
+		if added {
+			slog.Info("imported cf account", "module", "cf", "account", accountID, "total", total)
+		}
+		c.JSON(200, gin.H{
+			"added":     added,
+			"total":     total,
+			"account_id": accountID,
+			"key":       display,
+			"status":    map[bool]string{true: "imported", false: "already_exists"}[added],
+		})
+	}
+}
+
+// HandleImportCFKeyBulk imports multiple Cloudflare accounts at once.
+// Body: {"accounts":[{"account_id":"...","token":"..."},...]} or
+// {"raw":"account_id:token\naccount_id:token"} (newline/comma/space separated).
+// Idempotent — existing accounts are skipped (counted as skipped, not failed).
+func HandleImportCFKeyBulk(cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Accounts []struct {
+				AccountID string `json:"account_id"`
+				Token     string `json:"token"`
+				Key       string `json:"key"` // populated when parsed from raw
+			} `json:"accounts"`
+			Raw string `json:"raw"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON body"})
+			return
+		}
+		// Seed from raw string if no structured accounts provided.
+		if len(req.Accounts) == 0 && strings.TrimSpace(req.Raw) != "" {
+			for _, line := range strings.Split(req.Raw, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				for _, part := range strings.FieldsFunc(line, func(r rune) bool {
+					return r == ',' || r == ' ' || r == '\t' || r == '\r'
+				}) {
+					part = strings.TrimSpace(part)
+					if part != "" {
+						req.Accounts = append(req.Accounts, struct {
+							AccountID string `json:"account_id"`
+							Token     string `json:"token"`
+							Key       string `json:"key"`
+						}{Key: part})
+					}
+				}
+			}
+		}
+		added, failed, skipped := 0, 0, 0
+		var errors []gin.H
+		var total int
+		for i, a := range req.Accounts {
+			var accountID, token string
+			if a.Token != "" {
+				accountID = strings.TrimSpace(a.AccountID)
+				token = strings.TrimSpace(a.Token)
+			} else if a.Key != "" {
+				parts := strings.SplitN(a.Key, ":", 2)
+				if len(parts) == 2 {
+					accountID, token = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+				} else {
+					token = strings.TrimSpace(a.Key)
+				}
+			} else if a.AccountID != "" {
+				parts := strings.SplitN(a.AccountID, ":", 2)
+				if len(parts) == 2 {
+					accountID, token = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+				} else {
+					token = strings.TrimSpace(a.AccountID)
+				}
+			}
+			if token == "" {
+				failed++
+				errors = append(errors, gin.H{"index": i, "error": "token required"})
+				continue
+			}
+			wasNew, t := cfKM.AddKey(accountID, token)
+			total = t
+			if wasNew {
+				added++
+			} else {
+				skipped++
+			}
+		}
+		slog.Info("bulk cf import", "module", "cf", "added", added, "skipped", skipped, "failed", failed, "total", total)
+		c.JSON(200, gin.H{
+			"added":   added,
+			"skipped": skipped,
+			"failed":  failed,
+			"total":   total,
+			"errors":  errors,
+		})
+	}
+}
+
+// HandleDeleteCFKey removes a Cloudflare account by its AccountID.
+func HandleDeleteCFKey(cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		accountID := c.Param("account")
+		if accountID == "" {
+			c.JSON(400, gin.H{"error": "account id required"})
+			return
+		}
+		if !cfKM.DeleteKey(accountID) {
+			c.JSON(404, gin.H{"error": "cf account not found", "account_id": accountID})
+			return
+		}
+		c.JSON(200, gin.H{"status": "deleted", "account_id": accountID})
+	}
+}
+
+// HandleCFStats returns a per-account snapshot of the Cloudflare pool.
+func HandleCFStats(cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		keys := cfKM.GetAll()
+		result := make([]gin.H, 0)
+		for _, k := range keys {
+			s := k.Snapshot()
+			result = append(result, gin.H{
+				"account_id":    s.AccountID,
+				"token":        s.Token,
+				"quota_used":   s.QuotaUsed,
+				"quota_limit":  s.QuotaLimit,
+				"quota_remain": s.QuotaRemain,
+				"total_requests": s.TotalReqs,
+				"disabled":     s.Disabled,
+				"disabled_at":  s.DisabledAt,
+			})
+		}
+		c.JSON(200, gin.H{
+			"cloudflare_accounts": result,
+			"cf_total":            len(result),
+		})
+	}
+}
 func HandleCleanupBanned(grokAM *upstream.GrokAccountManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		typ := c.DefaultQuery("type", "grok")

@@ -143,6 +143,17 @@ const (
 	XAI_TOKEN_URL    = "https://auth.x.ai/oauth2/token"
 	XAI_UPSTREAM_URL = "https://cli-chat-proxy.grok.com/v1"
 	CB_UPSTREAM_URL  = "https://www.codebuddy.ai/v2/chat/completions"
+
+	// Cloudflare (cf/*) — Workers AI ai/run endpoint per account.
+	// CF_UPSTREAM_URL is the base; the full URL is built per-request as
+	// {CF_UPSTREAM_URL}/accounts/{accountID}/ai/run/{model}.
+	CF_UPSTREAM_URL = "https://api.cloudflare.com/client/v4"
+
+	// CF rate-limit handling (see README "Rotating accounts"):
+	//   429 + Retry-After header  → burst cooldown, retry other accounts.
+	//   429 without Retry-After   → daily-quota exhausted, skip until midnight.
+	CF_COOLDOWN_DURATION = 10 * time.Minute // rate-limit burst cooldown
+	CF_REENABLE_TICK     = 1 * time.Minute   // midnight reset + cooldown lift ticker
 	// CB_OAUTH_REFRESH_URL is the verified CodeBuddy OAuth refresh endpoint
 	// (plugin path — /v2/auth/token/refresh returns 404).
 	CB_OAUTH_REFRESH_URL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
@@ -268,6 +279,53 @@ func saveCBKey(s *db.Store, dto db.CBKeyDTO) {
 		return
 	}
 	s.SaveCBKey(dto)
+}
+
+// saveCFKey persists a CF account snapshot to Redis (same locking contract as
+// saveCBKey — callers build the DTO under CFKey.mu).
+func saveCFKey(s *db.Store, dto db.CFKeyDTO) {
+	if s == nil {
+		return
+	}
+	s.SaveCFKey(dto)
+}
+
+// IsCFModel returns true if the model routes to the Cloudflare upstream.
+// Matches the "cf/" prefix and the bare Workers AI model names that carry it
+// (e.g. "@cf/meta/llama-3.3-70b-instruct-fp8-fast").
+func IsCFModel(model string) bool {
+	if strings.HasPrefix(model, "cf/") {
+		return true
+	}
+	return strings.HasPrefix(model, "@cf/") ||
+		strings.HasPrefix(model, "@hf/") ||
+		strings.HasPrefix(model, "llama-") ||
+		strings.HasPrefix(model, "deepseek-") ||
+		strings.HasPrefix(model, "qwen-")
+}
+
+// CF_MODEL_ALIASES maps friendly short names to full Workers AI model IDs.
+// Used by ExpandCFAlias so callers can request e.g. "llama-70b" and get the
+// canonical Workers AI model name.
+var CF_MODEL_ALIASES = map[string]string{
+	"llama-70b":    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+	"llama-8b":     "@cf/meta/llama-3.1-8b-instruct",
+	"llama-3.1-8b": "@cf/meta/llama-3.1-8b-instruct",
+	"deepseek-r1":  "@cf/deepseek-ai/deepseek-r1-distill-llama-70b",
+	"deepseek-70b": "@cf/deepseek-ai/deepseek-r1-distill-llama-70b",
+	"qwen-32b":     "@cf/qwen/qwen2.5-32b-instruct",
+	"qwen-14b":     "@cf/qwen/qwen2.5-14b-instruct",
+	"mistral-7b":   "@cf/mistral/mistral-7b-instruct-v0.2",
+}
+
+// ExpandCFAlias expands a friendly CF alias to its full Workers AI model ID.
+// Returns ("", false) when the model is not a known alias (caller should pass
+// it through unchanged and let the upstream validate it).
+func ExpandCFAlias(model string) (string, bool) {
+	if m, ok := CF_MODEL_ALIASES[model]; ok {
+		return m, true
+	}
+	return "", false
 }
 
 // silence unused warnings in leaf builds

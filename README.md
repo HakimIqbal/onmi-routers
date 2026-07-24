@@ -1,623 +1,269 @@
-# FoxRouters
+# onmi-routers
 
-[![Go Version](https://img.shields.io/badge/go-1.25.12%2B-00ADD8?logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
-[![Version](https://img.shields.io/badge/version-v1.6.1-blue)](./CHANGELOG.md)
-[![Security](https://img.shields.io/badge/security-audited%203x-brightgreen)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-62%2F62%20PASS%20(%2Brace)-success)](./)
+[![Upstreams](https://img.shields.io/badge/upstreams-Grok%20%7C%20CodeBuddy%20%7C%20Cloudflare-blue)](./)
+[![Tests](https://img.shields.io/badge/tests-Passing-brightgreen)](./)
 
-Unified **OpenAI-compatible** API gateway that fronts **Grok** and **CodeBuddy** behind
-one `/v1/chat/completions` endpoint. Route by model prefix, round-robin across many
-upstream accounts/keys, refresh tokens automatically, enforce per-key quotas, and log
-every request/response to ClickHouse — all behind a single Bearer token.
+**Unified OpenAI-compatible API gateway** that fronts **Grok**, **CodeBuddy**, and **Cloudflare Workers AI** behind a single `/v1/chat/completions` endpoint — round-robin across thousands of upstream accounts, automatic key management, circuit breakers, per-key quotas, Redis hot-state, and full request logging.
 
----
-
-## What it is
-
-- **One endpoint, many backends.** Clients hit `POST /v1/chat/completions` with an
-  OpenAI-shaped payload; the gateway dispatches by model prefix:
-  - `grok-*` → `https://cli-chat-proxy.grok.com`
-  - `cb/*`   → `https://www.codebuddy.ai/v2`
-- **Multi-account / multi-key pools** with O(k) round-robin and automatic token
-  refresh (singleflight + pre-warm), plus circuit-breaker style disable on
-  auth / credit / quota errors.
-- **Per-gateway-key** RPM, burst, token quota, model whitelist, and role
-  (`admin` vs `inference`).
-- **Redis** for hot state (tokens, credits, disabled flags, rate counters,
-  gateway keys) and **ClickHouse** for cold, full-body history (ZSTD, 90-day TTL,
-  unlimited body size).
-- **Embedded web dashboard** for stats, accounts, keys, and models.
+> 📖 **Bilingual documentation** — This README is available in **English** and **Bahasa Indonesia**.
+> 📖 **Dokumentasi bilingual** — README ini tersedia dalam **Bahasa Inggris** dan **Bahasa Indonesia**.
 
 ---
+
+# 🇬🇧 English
+
+## What is onmi-routers?
+
+`onmi-routers` is a fork of [FoxRouters](https://github.com/rilspratama/Foxrouters) extended with **Cloudflare Workers AI** as a **third upstream**. One OpenAI-shaped endpoint, three backends, thousands of accounts:
+
+| Prefix | Upstream | Endpoint |
+|--------|----------|----------|
+| `grok-*` | Grok | `https://cli-chat-proxy.grok.com` |
+| `cb/*` | CodeBuddy | `https://www.codebuddy.ai/v2` |
+| `cf/*` | **Cloudflare Workers AI** | `https://api.cloudflare.com/client/v4/accounts/{id}/ai/run/{model}` |
+
+The Cloudflare adapter is purpose-built for the **12k-account farm** scenario: each account is a separate Cloudflare account with its own Account ID + API token (Bearer). It fronts the Workers AI `ai/run/{model}` endpoint, translates OpenAI `chat/completions` ↔ Workers AI payloads (streaming + non-streaming), and rotates accounts with weighted round-robin by remaining daily quota.
+
+### Why add Cloudflare?
+
+- **Free daily Workers AI quota** per account — multiply it across thousands of accounts.
+- **Static tokens** — no OAuth refresh loop (unlike Grok/CodeBuddy OAuth).
+- **Anti-correlation** — sticky per-account HTTP/SOCKS5 proxy support prevents Cloudflare from linking all traffic to one egress IP (which would trigger mass-disable).
 
 ## Features
 
-- **Model prefix routing** — `grok-*` → Grok, `cb/*` → CodeBuddy.
-- **Grok alias expansion** — `grok-4.5-{high,medium,low,xhigh,auto,none}` collapse
-  to `grok-4.5` + injected `reasoning_effort` (client value wins if set).
-- **Multi-account / multi-key round-robin** — O(k) `Next()` on the hot path,
-  background workers handle re-enable + refresh.
-- **Auto token refresh** — singleflight-guarded, lock-split (no network calls under
-  the account mutex), pre-warms tokens on a 30 s tick with a 30 min expiry window,
-  up to 10 concurrent refreshes.
-- **Circuit breaker** — passive (401/403/credit/`14018` disable + Redis persist)
-  and active health checks every ~10 min.
-- **Custom models + aliases** (v1.3.0) — runtime-configurable model aliases
-  (`cb/kimi-k3` → `cb/gpt-5.5`) backed by Redis, no restart needed.
-- **Combos** (v1.4.0) — group N models under `combo/<name>` virtual alias with
-  **fallback** or **round_robin** strategy. Round-robin uses atomic Redis `INCR`
-  (cluster-safe).
-- **Proxy pool manager** (v1.5.0) — dashboard-managed HTTP/SOCKS5 proxy pool with
-  round-robin rotation. All upstream calls (Grok, CodeBuddy, token refresh, health
-  checks) route through enabled proxies. **Per-upstream scoping** — assign a proxy
-  to Grok only, CodeBuddy only, or both. Auto-disable after 5 consecutive failures.
-  Proxy test endpoint with latency + exit IP.
-- **CodeBuddy OAuth dual pool** (v1.6.1) — `api_key` (`ck_*`) and OAuth JWT credentials
-  share one CB pool with mixed round-robin. Same chat endpoint
-  (`/v2/chat/completions`). OAuth uses Bearer access token only; refresh via
-  `/v2/plugin/auth/token/refresh`. Eager refresh on import when AT is near-expiry.
-- **Realtime credit meter** (v1.6.1) — `POST /v2/billing/meter/get-user-resource`
-  for API key **and** OAuth. Background worker every 5m + `POST /cb/credits/sync`.
-  Permanent disable on meter `Status==3`. Fallback `CB_CREDIT_LIMIT=240` if never synced.
-- **Bulk OAuth import** (v1.6.1) — `POST /cb/oauth/import/bulk` with `accounts[]`;
-  idempotent by email. Dashboard: Bulk OAuth modal, Type badge, Expires, Sync credits.
-- **API-key auth** with role-based access — `inference` (default, least privilege)
-  can only reach `/v1/*`; `admin` reaches everything.
-- **Per-key model whitelist** with glob patterns (`grok-*`, `cb/*`, exact match).
-- **Per-key rate limits** — RPM, burst, and cumulative token quota.
-- **Redis hot state** — tokens, CB credits, disabled flags, gateway keys,
-  rate/quota counters.
-- **ClickHouse history** — full request + response JSON, ZSTD compression,
-  90-day TTL, unlimited body length; refresh events and disable events too.
-- **Web dashboard** — 5 nav items (Dashboard, Accounts & Keys, Gateway API Keys,
-  Models, Proxies) with Models page containing 3 tabs (Models \| Custom \| Combos)
-  and Proxies page with upstream badges + add/edit modal.
-- **Security hardened** (v1.4.6–v1.5.0, 3x audited) — XSS-safe `data-*` event
-  delegation, CSRF guard (Origin/Referer check), session token indirection
-  (cookie ≠ API key), login rate limit (IP-based, XFF-proof), input validation
-  regex, last-admin lockout guard, `Secure`+`HttpOnly`+`SameSite=Lax` cookies,
-  data-race-free snapshot pattern for all pool types, API key masking in logs.
-- **Security headers** — CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options:
-  nosniff`, `Referrer-Policy`.
-- **systemd hardening** — `NoNewPrivileges`, `ProtectSystem`, `ProtectHome`,
-  private `/tmp`, etc.
-- **Gzip SSE streaming fix** — correctly disables response compression on SSE
-  streams so tokens actually arrive incrementally.
-- **Graceful shutdown** — drains in-flight requests and flushes logs.
+- **Three-upstream model-prefix routing** — `grok-*` → Grok, `cb/*` → CodeBuddy, `cf/*` → Cloudflare Workers AI.
+- **Cloudflare account pool** — weighted round-robin by remaining daily quota, thousands of accounts, hot-loaded from Redis.
+- **Smart 429 handling** — two cases:
+  - Rate-limit **burst** (has `Retry-After`) → short cooldown + retry other accounts.
+  - **Daily quota exhausted** (no `Retry-After`) → skip until next UTC midnight.
+- **401 / 403 → permanent disable** — dead/invalid tokens or banned accounts are coreted (never retried) and cleaned up via the dashboard.
+- **Sticky per-account proxy** — scope the proxy pool to `cloudflare` for anti-correlation (recommended for large farms).
+- **Grok alias expansion** — `grok-4.5-{high,medium,low,xhigh,auto,none}` → `grok-4.5` + injected `reasoning_effort`.
+- **Multi-account / multi-key round-robin** — O(k) `Next()` on the hot path; background workers handle re-enable + refresh.
+- **Auto token refresh** (Grok/CodeBuddy) — singleflight-guarded, pre-warmed on a 30 s tick.
+- **Circuit breaker** — passive (401/403/credit/quota disable + Redis persist) + active health checks (~10 min).
+- **Custom models + aliases** — runtime-configurable model aliases backed by Redis, no restart.
+- **Combos** — group N models under `combo/<name>` with `fallback` or `round_robin` strategy.
+- **Proxy pool manager** — dashboard-managed HTTP/SOCKS5 pool, per-upstream scoping, auto-disable after 5 failures.
+- **Per-gateway-key** RPM, burst, token quota, model whitelist, role (`admin` vs `inference`).
+- **Redis** hot state + **ClickHouse / SQLite** cold full-body history.
+- **Embedded web dashboard** — stats, accounts (Grok / CodeBuddy / **Cloudflare**), keys, models, proxies, tunnel.
 
----
+## Quick Start
 
-## Quick Start (One-Liner Installer — No Compose Needed)
-
-> Fastest path. Auto-installs Docker if missing, pulls all images, starts
-> Redis + ClickHouse + FoxRouters. No clone, no build, no docker-compose.
+### Docker (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rilspratama/Foxrouters/master/install.sh | bash
-```
-
-**Output:**
-```
-[✓] Docker found: Docker version 29.6.1
-[✓] Secrets generated → /etc/foxrouters/.env
-[✓] Redis started (port 6379)
-[✓] ClickHouse started (HTTP 8123, Native 9000)
-[✓] FoxRouters started (port 20130)
-[✓] Gateway key captured → /etc/foxrouters/gateway-key.txt
-[✓] Gateway healthy: {"service":"foxrouters","status":"healthy","version":"v1.5.0"}
-
-═══════════════════════════════════════════════════════════════
-  FoxRouters installed successfully!
-═══════════════════════════════════════════════════════════════
-
-  Gateway Key:  gw-a94c7befdb14cd6d2...
-
-  Dashboard:    http://<host-ip>:20130/dashboard
-  API Base:     http://localhost:20130/v1/chat/completions
-  Config:       /etc/foxrouters/.env
-
-  Manage:
-    docker logs foxrouters -f
-    docker restart foxrouters
-    docker stop foxrouters-redis foxrouters-clickhouse foxrouters
-═══════════════════════════════════════════════════════════════
-```
-
-**Custom ports** (optional):
-```bash
-FOXROUTERS_PORT=8080 REDIS_PORT=6380 bash install.sh
-```
-
-**Manage after install:**
-```bash
-docker logs foxrouters -f                                    # tail logs
-docker restart foxrouters                                     # restart gateway
-docker stop foxrouters-redis foxrouters-clickhouse foxrouters  # stop all
-docker start foxrouters-redis foxrouters-clickhouse foxrouters  # start all
-docker rm -f foxrouters foxrouters-redis foxrouters-clickhouse  # remove (keeps data)
-docker volume rm foxrouters-redis-data foxrouters-clickhouse-data  # wipe data
-```
-
----
-
-## Quick Start (Docker Compose — For Development)
-
-> Clone + build from source. Uses `docker-compose.yml` with build context.
-
-Open `http://localhost:20130/login`, paste the key, done.
-
----
-
-## Quick Start (Docker — Build from Source)
-
-> One command. The compose file wires `foxrouters`, `redis`, and `clickhouse`
-> together — no `.env` editing needed for the default stack.
-
-```bash
-git clone https://github.com/rilspratama/Foxrouters.git foxrouters && cd foxrouters
-
-# Start stack + capture bootstrap key (first boot auto-generates admin key)
-./start.sh
-```
-
-**Output:**
-```
-🔑 Admin Bootstrap Key
-  Key:    gw-a94c7befdb14cd6d2...819edd11
-  Login:  http://localhost:20130/login
-  Saved:  bootstrap-key.txt (chmod 600)
-```
-
-Then open `http://localhost:20130/login`, paste the key, done.
-
-**Other commands:**
-```bash
-./start.sh --status    # container + health status
-./start.sh --logs      # tail logs
-./start.sh --key       # show captured key
-./start.sh --reset     # wipe Redis volume + regenerate key
-./start.sh --stop      # stop stack
-```
-
-### When do I need to edit `.env`?
-
-| Scenario | Edit `.env`? |
-|----------|-------------|
-| Default docker-compose (Redis+CH+gw in same stack) | ❌ No — compose overrides everything |
-| Custom Redis password in compose | ✅ Set `REDIS_PASSWORD` |
-| Bare metal / systemd (Redis/CH on host) | ✅ Set `REDIS_ADDR`, `CLICKHOUSE_ADDR`, etc. |
-| External Redis (managed/Cloudflare) | ✅ Set `REDIS_ADDR=host:port` + `REDIS_PASSWORD` |
-| External ClickHouse | ✅ Set `CLICKHOUSE_ADDR` + auth |
-| Custom port (20130 → 8080) | ✅ Set `PORT=8080` |
-
-See [`.env.example`](./.env.example) for the full list of tunables.
-
----
-
-## Quick Start (Manual)
-
-**Prerequisites**
-
-- Go **1.25+**
-- Redis (local or remote)
-- ClickHouse (local or remote; the schema is auto-migrated on boot)
-
-```bash
-# 1. Build
-export PATH=$PATH:/usr/local/go/bin
-go build -o foxrouters .
-
-# 2. Configure
-cp .env.example .env
-$EDITOR .env
-
-# 3. Run
-./foxrouters
-# → listening on :20130
-```
-
-Bootstrapping accounts / keys:
-
-```bash
-# Import a Grok account credential file (admin only)
-curl -X POST http://127.0.0.1:20130/accounts/import \
-     -H "Authorization: Bearer $ADMIN_KEY" \
-     -H "Content-Type: application/json" \
-     --data @path/to/grok-account.json
-
-# Import a CodeBuddy API key
-curl -X POST http://127.0.0.1:20130/cb/import \
-     -H "Authorization: Bearer $ADMIN_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"api_key":"ck_YOUR_CB_KEY_HERE"}'
-
-# Import a CodeBuddy OAuth credential (dual pool — same chat path as API keys)
-curl -X POST http://127.0.0.1:20130/cb/oauth/import \
-     -H "Authorization: Bearer $ADMIN_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "email": "user@example.com",
-       "access_token": "eyJ...",
-       "refresh_token": "eyJ...",
-       "expires_in": 31535929
-     }'
-# If AT is expired/near-expiry and RT is valid, gateway eagerly refreshes before pool entry.
-
-# Bulk OAuth import (idempotent by email)
-curl -X POST http://127.0.0.1:20130/cb/oauth/import/bulk \
-     -H "Authorization: Bearer $ADMIN_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"accounts":[
-       {"email":"u1@example.com","access_token":"eyJ...","refresh_token":"eyJ...","expires_in":31535929},
-       {"email":"u2@example.com","access_token":"eyJ...","refresh_token":"eyJ..."}
-     ]}'
-
-# Sync credit meters (all keys, or one by email/key)
-curl -X POST http://127.0.0.1:20130/cb/credits/sync \
-     -H "Authorization: Bearer $ADMIN_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{}'
-# one: -d '{"email":"user@example.com"}'  or  -d '{"key":"ck_..."}'
-```
-
-### CodeBuddy credentials (v1.6.1)
-
-| Mode | Pool field | Upstream auth | Refresh |
-|------|------------|---------------|---------|
-| API key | `cred_type=api_key` | Bearer `ck_*` or `X-API-Key` | none |
-| OAuth | `cred_type=oauth` | `Authorization: Bearer <AT>` only | `POST /v2/plugin/auth/token/refresh` |
-
-Both modes share `www.codebuddy.ai/v2/chat/completions` and mixed RR. Credits come from
-`POST /v2/billing/meter/get-user-resource` (worker every 5m + manual `/cb/credits/sync`).
-Dashboard CB tab: Type badge, Expires, `+ Add OAuth`, **Bulk OAuth**, **Sync credits**.
-
----
-
-## Configuration
-
-All configuration is read from environment variables (or a `.env` file loaded at
-startup).
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `20130` | HTTP listen port. |
-| `REDIS_ADDR` | `127.0.0.1:6379` | Redis host:port for hot state. |
-| `REDIS_PASSWORD` | *(empty)* | Redis password if AUTH is enabled. |
-| `REDIS_DB` | `0` | Redis logical DB index. |
-| `CLICKHOUSE_ADDR` | `127.0.0.1:9001` | ClickHouse native-protocol host:port. |
-| `CLICKHOUSE_DB` | `gateway` | ClickHouse database name (auto-created). |
-| `CLICKHOUSE_USER` | `default` | ClickHouse username. |
-| `CLICKHOUSE_PASSWORD` | *(empty)* | ClickHouse password. |
-| `GATEWAY_KEY_FILE` | `./gateway-key.txt` | Path to the seed admin bearer token file. |
-| `CB_KEY_FILE` | `./cb-keys.json` | Path to a JSON file of CodeBuddy keys to seed. |
-| `CPA_AUTH_DIR` | `./` | Directory scanned for `xai-*.json` Grok credential files at boot. |
-| `GATEWAY_AUTH_DISABLE` | `false` | **Dev only.** When `true`, bypasses auth on all routes. Never enable in production. |
-| `COOKIE_SECURE` | `1` | Session cookie `Secure` flag. Set to `0` for dev HTTP (localhost). Default `1` = HTTPS-only. |
-
-> **Do not** commit secrets. Put the `.env` outside the repo or use `chmod 600
-> .gateway.env` alongside `.gitignore`.
-
----
-
-## API Reference
-
-Unless noted, all endpoints require `Authorization: Bearer <gateway-key>`.
-Roles: **inference** may call `/v1/*` only; **admin** may call everything.
-
-**Auth flow:**
-- **API clients:** `Authorization: Bearer gw-...` header (preferred).
-- **Dashboard:** session cookie (`foxrouters_session`) — random 256-bit token
-  bound to API key server-side (NOT the raw key). 7-day TTL, sliding window.
-- **Login:** `POST /login` with `key=gw-...` form body. Rate-limited 5/min per IP
-  (XFF-spoof-proof via `SetTrustedProxies(nil)`).
-- **CSRF:** cookie-authed mutations (POST/PUT/DELETE) require same-origin
-  `Origin`/`Referer`. Bearer-authed calls are exempt.
-
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| `POST` | `/v1/chat/completions` | inference/admin | Main OpenAI-compatible chat proxy. Model prefix decides upstream. |
-| `GET`  | `/v1/models` | inference/admin | Model list (includes Grok aliases and CB models). |
-| `GET`  | `/health` | **public** | Liveness + readiness probe. |
-| `GET`  | `/dashboard` | **public HTML** | Serves the SPA. Auth still required for its XHR calls. |
-| `GET`  | `/accounts` | admin | List Grok accounts + CB keys with status. |
-| `POST` | `/accounts/import` | admin | Import a Grok account credential JSON. |
-| `POST` | `/cb/import` | admin | Import a CodeBuddy API key (`ck_*`). |
-| `POST` | `/cb/import/bulk` | admin | Bulk import CodeBuddy API keys. |
-| `POST` | `/cb/oauth/import` | admin | Import CodeBuddy OAuth (email + AT + RT + expires_in?). Eager refresh if AT near-expiry. |
-| `POST` | `/cb/oauth/import/bulk` | admin | Bulk OAuth import (`accounts[]`). Idempotent by email. |
-| `POST` | `/cb/credits/sync` | admin | Realtime meter sync — `{}` all, or `{email\|key}` one. |
-| `DELETE` | `/cb/keys/:key` | admin | Delete a CodeBuddy key (or email for OAuth). |
-| `POST` | `/cleanup/disabled` | admin | Bulk-remove permanently disabled keys/accounts (`?type=all\|grok\|cb`). |
-| `GET`  | `/cb-stats` | admin | CodeBuddy per-key credit / usage stats (`cred_type`, remain, package, meter_*). |
-| `GET`  | `/metrics` | **public** | Prometheus metrics (request count, duration, pool sizes, circuit state). |
-| `POST` | `/v1/messages` | inference+ | **Anthropic Messages API** (Claude Code compatible). Accepts `x-api-key` or `Authorization: Bearer`. |
-| `GET`  | `/api/keys` | admin | List gateway API keys. |
-| `POST` | `/api/keys` | admin | Create a gateway key (role, allowed_models, RPM, burst, quota). |
-| `PUT`  | `/api/keys` | admin | Update a gateway key. |
-| `DELETE` | `/api/keys` | admin | Revoke a gateway key. |
-| `GET`  | `/history` | admin | Aggregated stats over a time window (`?hours=24`). |
-| `GET`  | `/history/recent` | admin | Recent request previews (`?limit=50`). `id` is a JSON **string**. |
-| `GET`  | `/history/detail/:id` | admin | Full request + response JSON for one call. |
-| `GET`  | `/api/models/custom` | admin | List runtime-registered custom models (v1.3.0). |
-| `POST` | `/api/models/custom` | admin | Register a new custom model: `{id, upstream, model_name, owned_by?}`. |
-| `DELETE` | `/api/models/custom/:id` | admin | Delete a custom model (id may contain `/`, e.g. `cb/kimi-k3`). |
-| `GET`  | `/api/aliases` | admin | List model aliases. |
-| `POST` | `/api/aliases` | admin | Create alias: `{alias, target}` (e.g. `my-claude` → `cb/claude-sonnet-4.6`). |
-| `DELETE` | `/api/aliases/:alias` | admin | Delete an alias. |
-| `GET`  | `/api/combos` | admin | List combos (v1.4.0). |
-| `POST` | `/api/combos` | admin | Create combo: `{name, strategy, models[], description?}` — strategy is `fallback` or `round_robin`. |
-| `GET`  | `/api/combos/*name` | admin | Fetch one combo. |
-| `DELETE` | `/api/combos/*name` | admin | Delete combo + its round-robin counter. |
-
-### Example: chat completion
-
-```bash
-curl -s http://127.0.0.1:20130/v1/chat/completions \
-  -H "Authorization: Bearer $GATEWAY_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "grok-4.5-high",
-    "stream": true,
-    "messages": [{"role":"user","content":"hello"}]
-  }'
-```
-
-### Example: Anthropic Messages API (Claude Code)
-
-FoxRouters exposes `POST /v1/messages` — the Anthropic Messages API format. This lets **Claude Code CLI** use FoxRouters as its backend proxy → Grok/CodeBuddy.
-
-```bash
-curl -s http://127.0.0.1:20130/v1/messages \
-  -H "x-api-key: $GATEWAY_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "max_tokens": 100,
-    "messages": [{"role":"user","content":"Hello"}]
-  }'
-```
-
-**Configure Claude Code to use FoxRouters:**
-
-```bash
-export ANTHROPIC_BASE_URL=http://localhost:20130
-export ANTHROPIC_API_KEY=gw-xxx
-claude
-```
-
-**Model mapping:**
-- `claude-*` → `cb/claude-sonnet-4` (CodeBuddy, default)
-- `claude-*-grok` → `grok-4.5` (Grok upstream)
-- `cb/*` / `grok-*` explicit → passthrough
-
-### Example: register a custom model + alias (v1.3.0)
-
-Custom models let you route any client-facing model id to `codebuddy` or `grok`
-with a chosen upstream model name — no rebuild, just a Redis-backed POST.
-
-```bash
-# 1. Register cb/kimi-k3 → codebuddy (upstream sees "kimi-k3")
-curl -s -X POST http://127.0.0.1:20130/api/models/custom \
-  -H "Authorization: Bearer $ADMIN_KEY" \
-  -H "content-type: application/json" \
-  -d '{"id":"cb/kimi-k3","upstream":"codebuddy","model_name":"kimi-k3","owned_by":"codebuddy"}'
-
-# 2. Add alias so clients can say "my-claude" and hit cb/claude-sonnet-4.6
-curl -s -X POST http://127.0.0.1:20130/api/aliases \
-  -H "Authorization: Bearer $ADMIN_KEY" \
-  -H "content-type: application/json" \
-  -d '{"alias":"my-claude","target":"cb/claude-sonnet-4.6"}'
-
-# 3. Use it — request goes to CodeBuddy with model=claude-sonnet-4.6.
-curl -s http://127.0.0.1:20130/v1/chat/completions \
-  -H "Authorization: Bearer $GATEWAY_KEY" -H "content-type: application/json" \
-  -d '{"model":"my-claude","max_tokens":50,"messages":[{"role":"user","content":"hi"}]}'
-
-# 4. Cleanup
-curl -s -X DELETE http://127.0.0.1:20130/api/aliases/my-claude \
-  -H "Authorization: Bearer $ADMIN_KEY"
-curl -s -X DELETE http://127.0.0.1:20130/api/models/custom/cb/kimi-k3 \
-  -H "Authorization: Bearer $ADMIN_KEY"
-```
-
-Aliases are checked **before** the default `grok-*` / `cb/*` routing, so they
-also work for the Anthropic Messages API — `mapAnthropicModel` consults
-aliases first.
-
-### Example: combos (v1.4.0)
-
-Group multiple models under a virtual `combo/<name>` alias with automatic
-failover or load-spreading:
-
-```bash
-ADMIN_KEY=<your-admin-gateway-key>
-CLIENT_KEY=<any-gateway-key>
-
-# 1. Create a Fallback combo — tries models in order, retries next on 5xx
-curl -s -X POST http://127.0.0.1:20130/api/combos \
-  -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" \
-  -d '{"name":"smart-fallback","strategy":"fallback",
-       "models":["cb/gpt-5.5","cb/claude-sonnet-4.6","grok-4.5"],
-       "description":"GPT then Claude then Grok"}'
-
-# 2. Create a Round Robin combo — rotates models across requests
-curl -s -X POST http://127.0.0.1:20130/api/combos \
-  -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" \
-  -d '{"name":"rr-pool","strategy":"round_robin",
-       "models":["cb/gpt-5.5","cb/claude-sonnet-4.6"]}'
-
-# 3. Use them — client just calls combo/<name>
-curl -s -X POST http://127.0.0.1:20130/v1/chat/completions \
-  -H "Authorization: Bearer $CLIENT_KEY" -H "content-type: application/json" \
-  -d '{"model":"combo/smart-fallback","messages":[{"role":"user","content":"hi"}]}'
-
-# 4. Combos appear in /v1/models
-curl -s http://127.0.0.1:20130/v1/models -H "Authorization: Bearer $CLIENT_KEY" \
-  | jq '.data[] | select(.id | startswith("combo/"))'
-
-# 5. Cleanup
-curl -s -X DELETE http://127.0.0.1:20130/api/combos/smart-fallback \
-  -H "Authorization: Bearer $ADMIN_KEY"
-curl -s -X DELETE http://127.0.0.1:20130/api/combos/rr-pool \
-  -H "Authorization: Bearer $ADMIN_KEY"
-```
-
-**Fallback semantics**
-- Non-streaming: on 5xx from `models[i]`, response is buffered + discarded, next model tried. 4xx returns immediately (client error).
-- Streaming (SSE): head-of-list model only — bytes already on the wire can't be retried.
-
-**Round-robin semantics**
-- Atomic `INCR combo:counter:<name>` (Redis) — cluster-safe fair rotation.
-- Counter is auto-deleted when the combo is deleted.
-
----
-
-## Authentication
-
-The gateway uses **Bearer tokens** (opaque gateway keys) with two roles:
-
-| Role | Access |
-|---|---|
-| `inference` *(default)* | `/v1/*` only. Rejected with `403` on any admin path. |
-| `admin` | All endpoints, including account/key/history management. |
-
-Each key also carries:
-
-- **`allowed_models`** — a list of glob patterns. Requests whose `model` does
-  not match any pattern get `403`. Patterns:
-  - `grok-*` — all Grok models (and aliases).
-  - `cb/*` — all CodeBuddy models.
-  - `grok-4.5` — exact match.
-  - `*` — allow everything (use sparingly).
-- **`rpm`** — max requests per minute (rolling window).
-- **`burst`** — token-bucket burst size.
-- **`token_quota`** — cumulative token budget; `429` once exhausted.
-
-Keys are created via `POST /api/keys` and stored in Redis.
-
----
-
-## Model Routing
-
-Routing is driven purely by the `model` field of the incoming request:
-
-| Model prefix | Upstream | Notes |
-|---|---|---|
-| `grok-*` | `https://cli-chat-proxy.grok.com` | Multi-account pool, refresh + 401 retry. |
-| `cb/*` | `https://www.codebuddy.ai/v2` | Dual pool (`api_key` + `oauth`), mixed RR, meter credit sync, 14018/Status==3 disable. |
-
-### Grok alias expansion
-
-Convenience aliases collapse to `grok-4.5` with `reasoning_effort` injected:
-
-| Alias | Rewrites to | `reasoning_effort` |
-|---|---|---|
-| `grok-4.5-high` | `grok-4.5` | `high` |
-| `grok-4.5-medium` | `grok-4.5` | `medium` |
-| `grok-4.5-low` | `grok-4.5` | `low` |
-| `grok-4.5-xhigh` | `grok-4.5` | `xhigh` |
-| `grok-4.5-auto` | `grok-4.5` | `auto` |
-| `grok-4.5-none` | `grok-4.5` | `none` |
-
-If the client already sets `reasoning_effort` explicitly, the client value wins.
-
----
-
-## Dashboard
-
-Served at `GET /dashboard` (public HTML; XHRs still require a gateway key via
-session cookie from `/login`). The SPA has five+ nav routes:
-
-| Route | Page |
-|---|---|
-| `#/` | **Dashboard** — health, request counts, token totals, recent history preview. |
-| `#/accounts` | **Accounts & Keys** — Grok accounts + CodeBuddy keys. CB tab: Type badge (OAuth purple / API Key blue), Expires, meter remain; buttons: `+ Add Key`, `+ Add OAuth`, `Bulk OAuth`, `Bulk Import`, `Sync credits`, `Cleanup Disabled`. |
-| `#/keys` | **Gateway API Keys** — key CRUD, role picker, allowed-models selector, RPM/burst/quota inputs. |
-| `#/models` | **Models** — 3 tabs: **Models** (usage stats) \| **Custom** (custom models + aliases) \| **Combos** (group models under virtual alias). |
-| `#/proxies` | **Proxies** — HTTP/SOCKS5 pool with upstream scoping. |
-| `#/tunnel` | **Tunnel** — Cloudflare Tunnel enable/disable + config. |
-
-Live gateway keys are **never** rendered into the HTML server-side. Delete buttons
-use `data-*` attributes + event delegation (XSS-safe, no inline `onclick`).
-
----
-
-## Architecture
-
-```
-Client
-  │  Bearer <gateway-key>
-  ▼
-AuthMiddleware           ── validate key, load role + limits
-  ▼
-RateLimitMiddleware      ── RPM / burst / token quota (Redis)
-  ▼
-proxyRequest             ── inspect "model", expand aliases
-  ├── grok-*  → proxyGrok         (O(k) RR, refresh, 401 retry, 403 ban)
-  └── cb/*    → proxyCodeBuddy    (dual pool api_key+oauth, meter credits, stream transform)
-  ▼
-async LogRequest → ClickHouse (full request + response, ZSTD, TTL 90d)
-```
-
-**Storage split**
-
-| Layer | Engine | Contents |
-|---|---|---|
-| Hot | **Redis** | Tokens, CB credits, disabled flags, gateway keys, rate/quota counters. |
-| Cold | **ClickHouse** | `request_logs` (full bodies), refresh events, disable events. |
-
-**Hot-path invariants**
-
-1. `Next()` is O(k) round-robin — re-enable/refresh happens in background workers.
-2. Counts come from `Len()`, never `len(GetAll())`.
-3. Refresh uses singleflight and never holds `acc.mu` across a network call.
-4. Any disable/enable/token mutation calls `Save*()` **after** the lock is
-   released.
-5. History writes are async; credentials never land in ClickHouse.
-
----
-
-## Development
-
-```bash
-export PATH=$PATH:/usr/local/go/bin
-
-# Required before every build
-go test -count=1 -race ./...
-go vet ./...
-
-# Deploy (Docker Compose — preferred)
-docker compose up -d --build foxrouters
-
-# Or local binary
-go build -o foxrouters .
-./foxrouters
-
-# Smoke
+git clone https://github.com/HakimIqbal/onmi-routers
+cd onmi-routers
+cp .gateway.env.example .gateway.env   # fill secrets
+docker compose up -d --build
 curl -s http://127.0.0.1:20130/health
 ```
 
-**Project layout**
+### From source
 
-| File | Role |
-|---|---|
-| `main.go` | Version, HTTP clients, workers, routes, graceful shutdown. |
-| `proxy.go` | Model routing, alias expansion, `RequestLog` build. |
-| `grok_account.go` | Grok pool, refresh loop, `proxyGrok`, re-enable worker. |
-| `codebuddy.go` / `internal/upstream/codebuddy.go` | CB dual pool (api_key + oauth), OAuth refresh, meter SyncCredits, credit worker. |
-| `internal/upstream/codebuddy_credit_sync_test.go` | Meter sync unit tests. |
-| `auth.go` | Bearer auth, role check, allowed-models glob match. |
-| `ratelimit.go` | RPM / burst / token-quota middleware. |
-| `health.go` | Health endpoint + active health checks. |
-| `handlers.go` | Account, key, history, dashboard handlers. |
-| `db.go` | Redis + LogStore clients and schema. |
-| `dashboard.html` | Embedded SPA (`go:embed`) — Type badge, OAuth/Bulk OAuth, Sync credits. |
+```bash
+export PATH=$PATH:/usr/local/go/bin
+go build -o onmi-routers .
+REDIS_ADDR=127.0.0.1:6379 ./onmi-routers
+```
 
-**Patch order (please follow):** `test → build → restart → smoke`.
+Requirements: Go 1.25+, Redis (hot state), optional ClickHouse (cold log).
 
----
+## Using Cloudflare (`cf/*`)
+
+### 1. Import accounts
+
+```bash
+# Single
+curl -X POST http://localhost:20130/cf/import \
+  -H "Content-Type: application/json" \
+  -d '{"account_id":"your-cf-account-id","token":"your-cf-api-token"}'
+
+# Bulk (one per line: account_id:token)
+curl -X POST http://localhost:20130/cf/import/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"raw":"acct-1:token-1\nacct-2:token-2"}'
+```
+
+### 2. Chat via the gateway
+
+```bash
+curl -X POST http://localhost:20130/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "cf/llama-8b",
+    "messages": [{"role":"user","content":"Hello"}],
+    "stream": true
+  }'
+```
+
+Supported `cf/*` aliases: `cf/llama-70b`, `cf/llama-8b`, `cf/deepseek-r1`, `cf/qwen-32b`, `cf/llama-3.3-70b`, and any raw `@cf/...` Workers AI model slug.
+
+### 3. Manage in the dashboard
+
+Open `/dashboard` → **Cloudflare** tab → add / bulk-import / delete accounts, view quota + disabled status, cleanup disabled.
+
+## API Reference
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/chat/completions` | POST | Main proxy (route by `model` prefix) |
+| `/v1/models` | GET | List models (includes `cf/*` aliases) |
+| `/health` | GET | Public health + upstream stats |
+| `/cf/import` | POST | Import single CF account |
+| `/cf/import/bulk` | POST | Bulk import CF accounts (`raw` field) |
+| `/cf/keys/:account` | DELETE | Delete a CF account |
+| `/cf-stats` | GET | CF pool stats (per-account) |
+| `/cleanup/disabled?type=cf` | POST | Permanently delete disabled CF accounts |
+
+## Configuration (essentials)
+
+```
+REDIS_ADDR / REDIS_PASSWORD / REDIS_DB
+LOG_BACKEND=sqlite            # sqlite (default) | clickhouse
+LOG_SQLITE_PATH=/var/lib/foxrouters/logs.db
+PORT=20130
+GATEWAY_KEY_FILE / CB_KEY_FILE
+CF_PROXY_SCOPE=cloudflare     # assign proxies to CF for anti-correlation
+```
 
 ## License
 
-Released under the **MIT License**. See [`LICENSE`](./LICENSE) for the full text.
+MIT — see [LICENSE](./LICENSE).
+
+---
+
+# 🇮🇩 Bahasa Indonesia
+
+## Apa itu onmi-routers?
+
+`onmi-routers` adalah fork dari [FoxRouters](https://github.com/rilspratama/Foxrouters) yang diperluas dengan **Cloudflare Workers AI** sebagai **upstream ketiga**. Satu endpoint berbentuk OpenAI, tiga backend, ribuan akun:
+
+| Prefiks | Upstream | Endpoint |
+|---------|----------|----------|
+| `grok-*` | Grok | `https://cli-chat-proxy.grok.com` |
+| `cb/*` | CodeBuddy | `https://www.codebuddy.ai/v2` |
+| `cf/*` | **Cloudflare Workers AI** | `https://api.cloudflare.com/client/v4/accounts/{id}/ai/run/{model}` |
+
+Adapter Cloudflare dibuat khusus untuk skenario **farm 12k akun**: setiap akun adalah akun Cloudflare terpisah dengan Account ID + API token (Bearer) sendiri. Adapter ini menempel ke endpoint Workers AI `ai/run/{model}`, menerjemahkan payload OpenAI `chat/completions` ↔ Workers AI (streaming + non-streaming), dan merotasi akun dengan weighted round-robin berdasarkan sisa kuota harian.
+
+### Kenapa tambah Cloudflare?
+
+- **Kuota Workers AI harian gratis** per akun — kalikan across ribuan akun.
+- **Token statis** — tidak ada loop refresh OAuth (berbeda dengan Grok/CodeBuddy OAuth).
+- **Anti-korelasi** — dukungan proxy HTTP/SOCKS5 sticky per-akun mencegah Cloudflare menghubungkan seluruh traffic ke satu IP egress (yang bisa memicu mass-disable).
+
+## Fitur
+
+- **Routing prefiks model tiga-upstream** — `grok-*` → Grok, `cb/*` → CodeBuddy, `cf/*` → Cloudflare Workers AI.
+- **Pool akun Cloudflare** — weighted round-robin by sisa kuota harian, ribuan akun, hot-loaded dari Redis.
+- **Penanganan 429 pintar** — dua kasus:
+  - **Burst rate-limit** (ada `Retry-After`) → cooldown singkat + retry akun lain.
+  - **Kuota harian habis** (tanpa `Retry-After`) → skip sampai tengah malam UTC berikutnya.
+- **401 / 403 → disable permanen** — token mati/invalid atau akun dibanned di-coret (tidak pernah di-retry) dan dibersihkan lewat dashboard.
+- **Proxy sticky per-akun** — scope proxy pool ke `cloudflare` untuk anti-korelasi (direkomendasikan untuk farm besar).
+- **Ekspansi alias Grok** — `grok-4.5-{high,medium,low,xhigh,auto,none}` → `grok-4.5` + `reasoning_effort` yang disuntikkan.
+- **Multi-akun / multi-key round-robin** — O(k) `Next()` di hot path; background worker menangani re-enable + refresh.
+- **Auto refresh token** (Grok/CodeBuddy) — singleflight-guarded, pre-warm tiap 30 detik.
+- **Circuit breaker** — pasif (disable 401/403/credit/quota + persist Redis) + health check aktif (~10 menit).
+- **Custom model + alias** — alias model bisa diubah saat runtime via Redis, tanpa restart.
+- **Combos** — gabungkan N model di bawah `combo/<nama>` dengan strategi `fallback` atau `round_robin`.
+- **Proxy pool manager** — pool HTTP/SOCKS5 yang dikelola dashboard, scoping per-upstream, auto-disable setelah 5 kegagalan.
+- **Per-gateway-key** RPM, burst, kuota token, whitelist model, role (`admin` vs `inference`).
+- **Redis** hot-state + **ClickHouse / SQLite** cold full-body history.
+- **Web dashboard tertanam** — stats, akun (Grok / CodeBuddy / **Cloudflare**), keys, models, proxies, tunnel.
+
+## Mulai Cepat
+
+### Docker (rekomendasi)
+
+```bash
+git clone https://github.com/HakimIqbal/onmi-routers
+cd onmi-routers
+cp .gateway.env.example .gateway.env   # isi secrets
+docker compose up -d --build
+curl -s http://127.0.0.1:20130/health
+```
+
+### Dari source
+
+```bash
+export PATH=$PATH:/usr/local/go/bin
+go build -o onmi-routers .
+REDIS_ADDR=127.0.0.1:6379 ./onmi-routers
+```
+
+Persyaratan: Go 1.25+, Redis (hot state), opsional ClickHouse (cold log).
+
+## Menggunakan Cloudflare (`cf/*`)
+
+### 1. Import akun
+
+```bash
+# Satuan
+curl -X POST http://localhost:20130/cf/import \
+  -H "Content-Type: application/json" \
+  -d '{"account_id":"cf-account-id-kamu","token":"cf-api-token-kamu"}'
+
+# Bulk (satu per baris: account_id:token)
+curl -X POST http://localhost:20130/cf/import/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"raw":"acct-1:token-1\nacct-2:token-2"}'
+```
+
+### 2. Chat lewat gateway
+
+```bash
+curl -X POST http://localhost:20130/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "cf/llama-8b",
+    "messages": [{"role":"user","content":"Halo"}],
+    "stream": true
+  }'
+```
+
+Alias `cf/*` yang didukung: `cf/llama-70b`, `cf/llama-8b`, `cf/deepseek-r1`, `cf/qwen-32b`, `cf/llama-3.3-70b`, dan slug model Workers AI `@cf/...` apa pun.
+
+### 3. Kelola di dashboard
+
+Buka `/dashboard` → tab **Cloudflare** → tambah / bulk-import / hapus akun, lihat kuota + status disabled, cleanup disabled.
+
+## Referensi API
+
+| Endpoint | Method | Fungsi |
+|----------|--------|--------|
+| `/v1/chat/completions` | POST | Proxy utama (route by prefiks `model`) |
+| `/v1/models` | GET | Daftar model (termasuk alias `cf/*`) |
+| `/health` | GET | Health publik + stats upstream |
+| `/cf/import` | POST | Import 1 akun CF |
+| `/cf/import/bulk` | POST | Bulk import akun CF (field `raw`) |
+| `/cf/keys/:account` | DELETE | Hapus akun CF |
+| `/cf-stats` | GET | Stats pool CF (per-akun) |
+| `/cleanup/disabled?type=cf` | POST | Hapus permanen akun CF yang disabled |
+
+## Konfigurasi (inti)
+
+```
+REDIS_ADDR / REDIS_PASSWORD / REDIS_DB
+LOG_BACKEND=sqlite            # sqlite (default) | clickhouse
+LOG_SQLITE_PATH=/var/lib/foxrouters/logs.db
+PORT=20130
+GATEWAY_KEY_FILE / CB_KEY_FILE
+CF_PROXY_SCOPE=cloudflare     # pasang proxy ke CF untuk anti-korelasi
+```
+
+## Lisensi
+
+MIT — lihat [LICENSE](./LICENSE).
+
+---
+
+<p align="center">
+  <sub>onmi-routers · fork of FoxRouters + Cloudflare Workers AI upstream · Made with ☕ by HakimIqbal</sub>
+</p>

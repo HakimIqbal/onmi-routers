@@ -187,17 +187,21 @@ func (h *UpstreamHealth) Stats() gin.H {
 type HealthChecker struct {
 	Grok   *UpstreamHealth
 	CB     *UpstreamHealth
+	CF     *UpstreamHealth
 	grokAM *GrokAccountManager
 	cbKM   *CBKeyManager
+	cfKM   *CFKeyManager
 }
 
 // NewHealthChecker wires a health checker to the pool managers.
-func NewHealthChecker(grokAM *GrokAccountManager, cbKM *CBKeyManager) *HealthChecker {
+func NewHealthChecker(grokAM *GrokAccountManager, cbKM *CBKeyManager, cfKM *CFKeyManager) *HealthChecker {
 	return &HealthChecker{
 		Grok:   NewUpstreamHealth("grok"),
 		CB:     NewUpstreamHealth("codebuddy"),
+		CF:     NewUpstreamHealth("cloudflare"),
 		grokAM: grokAM,
 		cbKM:   cbKM,
+		cfKM:   cfKM,
 	}
 }
 
@@ -205,6 +209,7 @@ func NewHealthChecker(grokAM *GrokAccountManager, cbKM *CBKeyManager) *HealthChe
 func (hc *HealthChecker) Start() {
 	go hc.grokCheckLoop()
 	go hc.cbCheckLoop()
+	go hc.cfCheckLoop()
 	slog.Info("active health checker started", "module", "health", "interval", HEALTH_CHECK_INTERVAL.String())
 }
 
@@ -223,6 +228,15 @@ func (hc *HealthChecker) cbCheckLoop() {
 	defer ticker.Stop()
 	for range ticker.C {
 		hc.checkCB()
+	}
+}
+
+func (hc *HealthChecker) cfCheckLoop() {
+	hc.checkCF()
+	ticker := time.NewTicker(HEALTH_CHECK_INTERVAL)
+	defer ticker.Stop()
+	for range ticker.C {
+		hc.checkCF()
 	}
 }
 
@@ -406,6 +420,94 @@ func (hc *HealthChecker) checkCB() {
 				h.state = CircuitOpen
 				h.openedAt = time.Now()
 				slog.Warn("circuit OPENED (LLM test status)", "module", "health", "upstream", "codebuddy", "status", resp.StatusCode)
+			}
+		}
+	}
+	h.mu.Unlock()
+}
+
+func (hc *HealthChecker) checkCF() {
+	h := hc.CF
+	start := time.Now()
+
+	keys := hc.cfKM.GetAll()
+	if len(keys) == 0 {
+		h.mu.Lock()
+		h.lastCheckAt = time.Now()
+		h.lastCheckOK = false
+		h.lastCheckLatMs = 0
+		h.lastErrorMsg.Store("no cf keys loaded")
+		h.mu.Unlock()
+		return
+	}
+
+	var key *CFKey
+	for _, k := range keys {
+		k.mu.Lock()
+		d := k.disabled
+		k.mu.Unlock()
+		if !d {
+			key = k
+			break
+		}
+	}
+	if key == nil {
+		h.mu.Lock()
+		h.lastCheckAt = time.Now()
+		h.lastCheckOK = false
+		h.lastCheckLatMs = 0
+		h.lastErrorMsg.Store("all cf keys disabled")
+		h.mu.Unlock()
+		return
+	}
+
+	body := `{"model":"@cf/meta/llama-3.1-8b-instruct","messages":[{"role":"user","content":"Hi"}],"stream":false,"max_tokens":5}`
+	url := fmt.Sprintf("%s/accounts/%s/ai/run/@cf/meta/llama-3.1-8b-instruct", CF_UPSTREAM_URL, key.AccountID)
+	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+key.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client, proxyID := getClient(healthCheckClient, "cloudflare")
+	resp, err := client.Do(req)
+	latency := time.Since(start)
+	markProxyResult(proxyID, err, func() int {
+		if err != nil || resp == nil {
+			return 0
+		}
+		return resp.StatusCode
+	}())
+
+	h.mu.Lock()
+	h.lastCheckAt = time.Now()
+	h.lastCheckLatMs = latency.Milliseconds()
+	if err != nil {
+		h.lastCheckOK = false
+		h.lastErrorMsg.Store(err.Error())
+		h.consecutiveErrs++
+		if h.consecutiveErrs >= CB_OPEN_THRESHOLD && h.state == CircuitClosed {
+			h.state = CircuitOpen
+			h.openedAt = time.Now()
+			slog.Warn("circuit OPENED (LLM test failed)", "module", "health", "upstream", "cloudflare", "error", err)
+		}
+	} else {
+		resp.Body.Close()
+		h.lastCheckOK = HealthStatusOK(resp.StatusCode)
+		if h.lastCheckOK {
+			h.lastErrorMsg.Store("")
+			if h.state == CircuitHalfOpen {
+				h.state = CircuitClosed
+				h.consecutiveErrs = 0
+				slog.Info("circuit CLOSED (LLM test OK)", "module", "health", "upstream", "cloudflare", "latency_ms", latency.Milliseconds())
+			} else if h.state == CircuitClosed {
+				h.consecutiveErrs = 0
+			}
+		} else {
+			h.lastErrorMsg.Store(fmt.Sprintf("LLM test status %d", resp.StatusCode))
+			h.consecutiveErrs++
+			if h.consecutiveErrs >= CB_OPEN_THRESHOLD && h.state == CircuitClosed {
+				h.state = CircuitOpen
+				h.openedAt = time.Now()
+				slog.Warn("circuit OPENED (LLM test status)", "module", "health", "upstream", "cloudflare", "status", resp.StatusCode)
 			}
 		}
 	}

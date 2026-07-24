@@ -112,7 +112,7 @@ func toString(v interface{}) string {
 // Fallback combos retry on 5xx by buffering the upstream response through a
 // httptest-style recorder and only flushing to the real writer on success
 // or list exhaustion.
-func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, registry *CustomRegistry, combos *ComboRegistry) gin.HandlerFunc {
+func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, registry *CustomRegistry, combos *ComboRegistry, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
@@ -171,7 +171,17 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				{"id": "cb/kimi-k3", "object": "model", "owned_by": "codebuddy"},
 				// CodeBuddy — Default
 				{"id": "cb/default-model", "object": "model", "owned_by": "codebuddy"},
-			}
+				// Cloudflare (cf/*) — Workers AI models
+				{"id": "cf/llama-70b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/llama-8b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/deepseek-r1", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/qwen-32b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/qwen-14b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/mistral-7b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-8b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/deepseek-ai/deepseek-r1-distill-llama-70b", "object": "model", "owned_by": "cloudflare"},
+				}
 			// Append runtime-registered custom models.
 			if registry != nil {
 				for _, entry := range registry.ListModels() {
@@ -358,7 +368,16 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				}
 				upstream.ProxyCodeBuddy(c, b, bm, cbKM, clientStream, hc)
 			default:
-				if upstream.IsGrokModel(m) {
+				if upstream.IsCFModel(m) {
+					upstreamName = "cloudflare"
+					// Expand friendly cf/* alias to full Workers AI model id.
+					if expanded, ok := upstream.ExpandCFAlias(m); ok {
+						m = expanded
+						bm["model"] = m
+						b, _ = json.Marshal(bm)
+					}
+					upstream.ProxyCloudflare(c, b, bm, cfKM, clientStream, hc)
+				} else if upstream.IsGrokModel(m) {
 					upstreamName = "grok"
 					upstream.ProxyGrok(c, b, grokAM, clientStream, hc, m)
 				} else {

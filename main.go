@@ -113,8 +113,14 @@ func main() {
 		slog.Warn("LoadFromRedis failed, starting empty", "module", "cb", "error", err)
 	}
 
+	// Cloudflare (cf/*) pool — third upstream for onmi-routers.
+	cfKM := NewCFKeyManager(db)
+	if err := cfKM.LoadFromRedis(); err != nil {
+		slog.Warn("LoadFromRedis failed, starting empty", "module", "cf", "error", err)
+	}
+
 	// Health checker: active + passive monitoring with circuit breaker
-	hc := newHealthChecker(grokAM, cbKM)
+	hc := newHealthChecker(grokAM, cbKM, cfKM)
 	hc.Start()
 
 	// Auth + rate limiter
@@ -167,15 +173,16 @@ func main() {
 	go reenableCBWorker(cbKM)
 	go cbOAuthRefreshWorker(cbKM)
 	go cbCreditSyncWorker(cbKM)
+	go reenableCFWorker(cfKM)
 	// Snapshot pool sizes into Prometheus gauges every 10s. Cheap RLock walk;
 	// keeps activeKeys/disabledKeys eventually consistent without touching the
 	// hot path. Circuit-state gauges are updated inline from health.go.
 	go func() {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
-		updatePoolGauges(grokAM, cbKM, authMgr) // prime once
+		updatePoolGauges(grokAM, cbKM, authMgr, cfKM) // prime once
 		for range t.C {
-			updatePoolGauges(grokAM, cbKM, authMgr)
+			updatePoolGauges(grokAM, cbKM, authMgr, cfKM)
 		}
 	}()
 
@@ -212,13 +219,14 @@ func main() {
 	loginLimiter := newLoginLimiter()
 	r.POST("/login", loginLimiter.middleware(), handleLogin(authMgr, sessions))
 	r.GET("/logout", handleLogout(sessions))
-	r.GET("/health", handleHealth(grokAM, cbKM, hc, authMgr, sessions))
+	r.GET("/health", handleHealth(grokAM, cbKM, hc, authMgr, sessions, cfKM))
 	r.HEAD("/health", handleHealthMinimal())
 	// Prometheus scrape endpoint — public, no auth (scraper isolation is
 	// upstream's responsibility, e.g. a firewall / private network scrape).
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	// Accounts/keys/history — admin only (inference keys must not see other tenants' data)
 	r.GET("/accounts", adminAuth, handleAccounts(grokAM, cbKM))
+	r.GET("/cf-stats", adminAuth, handleCFStats(cfKM))
 	r.GET("/cb-stats", adminAuth, func(c *gin.Context) {
 		keys := cbKM.GetAll()
 		stats := []gin.H{}
@@ -270,7 +278,7 @@ func main() {
 	r.POST("/cb/credits/sync", csrfGuard(), adminAuth, handleSyncCBCredits(cbKM))
 	r.DELETE("/accounts/:email", csrfGuard(), adminAuth, handleDeleteAccount(grokAM))
 	r.DELETE("/cb/keys/:key", csrfGuard(), adminAuth, handleDeleteCBKey(cbKM))
-	r.POST("/cleanup/disabled", csrfGuard(), adminAuth, handleCleanupDisabled(grokAM, cbKM))
+	r.POST("/cleanup/disabled", csrfGuard(), adminAuth, handleCleanupDisabled(grokAM, cbKM, cfKM))
 	r.POST("/cleanup/banned", csrfGuard(), adminAuth, handleCleanupBanned(grokAM))
 	r.GET("/history", adminAuth, handleHistory(db))
 	r.GET("/history/recent", adminAuth, handleRecentRequests(db))
@@ -317,24 +325,30 @@ func main() {
 	// anthropicAuthMiddleware (rewrites x-api-key → Authorization: Bearer).
 	r.Any("/v1/*path", func(c *gin.Context) {
 		if c.Request.URL.Path == "/v1/messages" && c.Request.Method == http.MethodPost {
-			handleMessages(grokAM, cbKM, hc, authMgr, customReg, comboReg)(c)
+			handleMessages(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM)(c)
 			return
 		}
-		proxyRequest(grokAM, cbKM, hc, authMgr, customReg, comboReg)(c)
+		proxyRequest(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM)(c)
 	})
+
+	// CF admin endpoints (cf/* pool).
+	r.POST("/cf/import", csrfGuard(), adminAuth, handleImportCFKey(cfKM))
+	r.POST("/cf/import/bulk", csrfGuard(), adminAuth, handleImportCFKeyBulk(cfKM))
+	r.DELETE("/cf/keys/:account", csrfGuard(), adminAuth, handleDeleteCFKey(cfKM))
 
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"service": "foxrouters",
+			"service": "onmi-routers",
 			"version": Version,
-			"mode":    "unified (grok + codebuddy)",
+			"mode":    "unified (grok + codebuddy + cloudflare)",
 			"endpoints": []string{
-				"POST /v1/chat/completions — grok-* → Grok, cb/* → CodeBuddy",
+				"POST /v1/chat/completions — grok-* → Grok, cb/* → CodeBuddy, cf/* → Cloudflare",
 				"GET  /v1/models",
 				"GET  /accounts",
 				"POST /accounts/refresh",
 				"GET  /health — upstream health + circuit breaker status",
 				"GET  /cb-stats",
+				"GET  /cf-stats",
 				"GET  /history — request stats + model breakdown",
 				"GET  /history/recent — recent request logs",
 				"GET  /history/detail/:id — full request/response JSON for a single log",
@@ -342,6 +356,7 @@ func main() {
 			},
 			"grok_accounts": grokAM.Len(),
 			"cb_keys":       cbKM.Len(),
+			"cf_accounts":   cfKM.Len(),
 		})
 	})
 

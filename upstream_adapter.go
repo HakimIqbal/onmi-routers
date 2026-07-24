@@ -15,6 +15,8 @@ type GrokAccount = upstream.GrokAccount
 type GrokAccountManager = upstream.GrokAccountManager
 type CBKey = upstream.CBKey
 type CBKeyManager = upstream.CBKeyManager
+type CFKey = upstream.CFKey
+type CFKeyManager = upstream.CFKeyManager
 type UpstreamHealth = upstream.UpstreamHealth
 type HealthChecker = upstream.HealthChecker
 type CircuitState = upstream.CircuitState
@@ -45,25 +47,30 @@ const (
 var (
 	NewGrokAccountManager = upstream.NewGrokAccountManager
 	NewCBKeyManager       = upstream.NewCBKeyManager
+	NewCFKeyManager       = upstream.NewCFKeyManager
 
 	autoRefreshWorker   = upstream.AutoRefreshWorker
 	reenableWorker      = upstream.ReenableWorker
 	reenableCBWorker    = upstream.ReenableCBWorker
 	cbOAuthRefreshWorker = upstream.CBOAuthRefreshWorker
 	cbCreditSyncWorker  = upstream.CBCreditSyncWorker
+	reenableCFWorker    = upstream.ReenableCFWorker
 
 	isGrokModel     = upstream.IsGrokModel
+	isCFModel       = upstream.IsCFModel
 	expandGrokAlias = upstream.ExpandGrokAlias
+	expandCFAlias   = upstream.ExpandCFAlias
 	proxyGrok       = upstream.ProxyGrok
 	proxyCodeBuddy  = upstream.ProxyCodeBuddy
+	proxyCloudflare = upstream.ProxyCloudflare
 	healthStatusOK  = upstream.HealthStatusOK
 
 	truncateLog = upstream.TruncateLog
 )
 
 // newHealthChecker wraps the exported constructor with the old lower-case name.
-func newHealthChecker(am *GrokAccountManager, km *CBKeyManager) *HealthChecker {
-	return upstream.NewHealthChecker(am, km)
+func newHealthChecker(am *GrokAccountManager, km *CBKeyManager, cfkm *CFKeyManager) *HealthChecker {
+	return upstream.NewHealthChecker(am, km, cfkm)
 }
 
 // newUpstreamHealth alias for tests.

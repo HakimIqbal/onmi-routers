@@ -945,6 +945,10 @@ body {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
       Tunnel
     </button>
+    <button class="nav-item" data-route="#/cf" onclick="navigateTo('#/cf')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20z"/></svg>
+      Cloudflare
+    </button>
   </nav>
   <div class="sidebar-footer">
     <div class="status-row">
@@ -1122,6 +1126,39 @@ body {
           </div>
           <div id="grokPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ════════ PAGE: CLOUDFLARE (cf/*) ════════ -->
+    <div class="page" id="page-cf">
+      <div class="panel">
+        <div class="panel-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20z"/></svg>
+          <h3>Cloudflare Accounts</h3>
+          <div style="margin-left:auto">
+            <button class="btn-ghost" onclick="loadCF()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div class="subtabs">
+          <button class="subtab active">Cloudflare (cf/*)</button>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn-ghost" id="cfAddBtn" onclick="showAddCFModal()" style="padding:5px 12px;font-size:12px">+ Add Account</button>
+            <button class="btn-ghost" id="cfBulkBtn" onclick="showBulkCFModal()" style="padding:5px 12px;font-size:12px">Bulk Import</button>
+            <button class="btn-ghost" id="cfCleanupBtn" onclick="cleanupDisabled('cf')" style="padding:5px 12px;font-size:12px;color:var(--danger)">Cleanup Disabled</button>
+          </div>
+        </div>
+        <div id="cfPanel" class="tbl-scroll" style="max-height:500px">
+          <table class="tbl">
+            <thead><tr>
+              <th>Account ID</th><th>Token (masked)</th><th>Quota Used</th><th>Quota Limit</th><th>Remaining</th><th>Requests</th><th>Disabled At</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="cfBody"></tbody>
+          </table>
+        </div>
+        <div id="cfPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
       </div>
     </div>
 
@@ -1826,7 +1863,8 @@ var routes = {
   '#/keys':     { page: 'page-keys',      title: 'Gateway API Keys', meta: 'Redis-backed · CRUD' },
   '#/models':   { page: 'page-models',    title: 'Models', meta: 'Usage stats · aliases · custom · combos' },
   '#/proxies':  { page: 'page-proxies',   title: 'Proxies', meta: 'HTTP/SOCKS5 upstream proxy pool · round-robin' },
-  '#/tunnel':   { page: 'page-tunnel',    title: 'Tunnel', meta: 'Cloudflare Tunnel · embedded cloudflared · Redis config' }
+  '#/tunnel':   { page: 'page-tunnel',    title: 'Tunnel', meta: 'Cloudflare Tunnel · embedded cloudflared · Redis config' },
+  '#/cf':       { page: 'page-cf',        title: 'Cloudflare', meta: 'cf/* upstream · Workers AI accounts · 12k pool' }
 };
 
 function navigateTo(hash) {
@@ -1874,6 +1912,9 @@ function router() {
     }
   } else {
     if (typeof stopTunnelPolling === 'function') stopTunnelPolling();
+  }
+  if (hash === '#/cf') {
+    if (typeof loadCF === 'function') loadCF();
   }
 }
 
@@ -1990,6 +2031,11 @@ async function refresh() {
     document.getElementById('grokCount').textContent = health.grok_accounts;
     document.getElementById('cbCount').textContent = health.cb_keys;
     document.getElementById('cbActive').innerHTML = '<span class="ok">' + health.cb_keys_active + ' active</span>';
+    document.getElementById('cfCount').textContent = (health.cf_accounts !== undefined ? health.cf_accounts : '—');
+    if (health.cf_accounts_active !== undefined) {
+      var cfEl = document.getElementById('cfActive');
+      if (cfEl) cfEl.innerHTML = '<span class="ok">' + health.cf_accounts_active + ' active</span>';
+    }
     document.getElementById('models').textContent = models.data ? models.data.length : '—';
 
     var g = health.upstreams.grok, cb = health.upstreams.codebuddy;
@@ -2048,6 +2094,8 @@ async function refresh() {
     window._grokPageSize = window._grokPageSize || 50;
     renderGrokPage();
 
+    // Cloudflare (cf/*) — refresh table if on that route (cheap otherwise)
+    if (window.location.hash === '#/cf') loadCF();
 
     // Timestamp
     var ts_str = 'Updated ' + new Date().toLocaleTimeString();
@@ -3169,7 +3217,111 @@ function cleanupBanned(type) {
   });
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════════
+   CLOUDFLARE (cf/*) MANAGEMENT
+   ══════════════════════════════════════════════════════════ */
+function loadCF() {
+  fetchJSON('/cf-stats').then(function(data) {
+    var rows = (data.cloudflare_accounts || []);
+    var body = document.getElementById('cfBody');
+    if (!body) return;
+    body.innerHTML = '';
+    if (rows.length === 0) {
+      body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-tertiary);padding:24px">No Cloudflare accounts. Use "+ Add Account" or "Bulk Import".</td></tr>';
+      return;
+    }
+    rows.forEach(function(a) {
+      var tr = document.createElement('tr');
+      var status = a.disabled
+        ? '<span class="err">disabled</span>'
+        : '<span class="ok">active</span>';
+      var quotaLimit = (a.quota_limit && a.quota_limit > 0) ? a.quota_limit : '—';
+      var remain = (a.quota_limit && a.quota_limit > 0) ? a.quota_remain : '—';
+      tr.innerHTML =
+        '<td><code>' + escapeHtml(a.account_id) + '</code></td>' +
+        '<td><code>' + escapeHtml(a.token || '') + '</code></td>' +
+        '<td>' + (a.quota_used || 0) + '</td>' +
+        '<td>' + quotaLimit + '</td>' +
+        '<td>' + remain + '</td>' +
+        '<td>' + (a.total_requests || 0) + '</td>' +
+        '<td>' + (a.disabled_at && a.disabled_at !== '0001-01-01T00:00:00Z' ? a.disabled_at : '—') + '</td>' +
+        '<td>' + status + '</td>' +
+        '<td><button class="btn-ghost" onclick="deleteCFAccount(\'' + encodeURIComponent(a.account_id) + '\')" style="padding:3px 8px;font-size:11px;color:var(--danger)">Delete</button></td>';
+      body.appendChild(tr);
+    });
+  }).catch(function(e) {
+    console.warn('loadCF failed', e);
+  });
+}
+
+function showAddCFModal() {
+  document.getElementById('cfAccountId').value = '';
+  document.getElementById('cfToken').value = '';
+  document.getElementById('addCFModal').style.display = 'flex';
+  document.getElementById('cfAccountId').focus();
+}
+function closeAddCFModal() { document.getElementById('addCFModal').style.display = 'none'; }
+
+function importCFAccount() {
+  var accountId = document.getElementById('cfAccountId').value.trim();
+  var token = document.getElementById('cfToken').value.trim();
+  if (!token) { alert('Token is required'); return; }
+  var btn = document.getElementById('cfSave');
+  btn.disabled = true;
+  apiFetch('/cf/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account_id: accountId, token: token })
+  }).then(function(d) {
+    closeAddCFModal();
+    loadCF();
+    if (typeof refresh === 'function') refresh();
+  }).catch(function(e) {
+    alert('Import failed: ' + e.message);
+  }).finally(function() { btn.disabled = false; });
+}
+
+function showBulkCFModal() {
+  document.getElementById('cfBulkRaw').value = '';
+  document.getElementById('bulkCFModal').style.display = 'flex';
+  document.getElementById('cfBulkRaw').focus();
+}
+function closeBulkCFModal() { document.getElementById('bulkCFModal').style.display = 'none'; }
+
+function bulkImportCF() {
+  var raw = document.getElementById('cfBulkRaw').value;
+  if (!raw.trim()) { alert('Paste account_id:token lines'); return; }
+  var btn = document.getElementById('cfBulkSave');
+  btn.disabled = true;
+  apiFetch('/cf/import/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: raw })
+  }).then(function(d) {
+    closeBulkCFModal();
+    loadCF();
+    if (typeof refresh === 'function') refresh();
+    alert('Added: ' + (d.added || 0) + '\nSkipped (existing): ' + (d.skipped || 0) + '\nFailed: ' + (d.failed || 0));
+  }).catch(function(e) {
+    alert('Bulk import failed: ' + e.message);
+  }).finally(function() { btn.disabled = false; });
+}
+
+function deleteCFAccount(accountId) {
+  accountId = decodeURIComponent(accountId);
+  if (!confirm('Delete Cloudflare account ' + accountId + '? This cannot be undone.')) return;
+  apiFetch('/cf/keys/' + encodeURIComponent(accountId), { method: 'DELETE' })
+    .then(function() { loadCF(); if (typeof refresh === 'function') refresh(); })
+    .catch(function(e) { alert('Delete failed: ' + e.message); });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
    INIT
    ══════════════════════════════════════════════════════════ */
 router();           // initial route
@@ -3182,6 +3334,40 @@ setInterval(refresh, 5000);       // health/accounts every 5s
 <!-- ══════════════════════════════════════════════════════════
      ADD/BULK IMPORT MODALS
      ══════════════════════════════════════════════════════════ -->
+
+<!-- Add CF Account Modal -->
+<div class="modal-overlay" id="addCFModal" onclick="if(event.target===this)closeAddCFModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);width:90%;max-width:480px;padding:24px">
+    <h3 style="margin:0 0 16px;font-size:16px">Add Cloudflare Account</h3>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:6px">Account ID</label>
+      <input type="text" id="cfAccountId" placeholder="cf-account-id-xxxx" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-primary);color:var(--text);font-family:var(--mono);font-size:13px" />
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:6px">API Token (Bearer)</label>
+      <input type="text" id="cfToken" placeholder="cf-token-xxxx" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-primary);color:var(--text);font-family:var(--mono);font-size:13px" />
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-ghost" onclick="closeAddCFModal()" style="padding:8px 16px;font-size:13px">Cancel</button>
+      <button class="btn-primary" id="cfSave" onclick="importCFAccount()" style="padding:8px 16px;border-radius:var(--radius-sm);background:var(--brand);color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk CF Import Modal -->
+<div class="modal-overlay" id="bulkCFModal" onclick="if(event.target===this)closeBulkCFModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);width:90%;max-width:640px;padding:24px;max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 8px;font-size:16px">Bulk Import Cloudflare Accounts</h3>
+    <div style="margin-bottom:8px;font-size:12px;color:var(--text-tertiary)">One account per line: <code>account_id:token</code>. Lines without <code>:</code> are treated as token-only (auto-generated account id).</div>
+    <div style="margin-bottom:16px">
+      <textarea id="cfBulkRaw" rows="12" placeholder="acct-1:token-1&#10;acct-2:token-2&#10;token-only-no-colon" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-light,#16181d);color:var(--text);font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-ghost" onclick="closeBulkCFModal()" style="padding:8px 16px;font-size:13px">Cancel</button>
+      <button class="btn-primary" id="cfBulkSave" onclick="bulkImportCF()" style="padding:8px 16px;border-radius:var(--radius-sm);background:var(--brand);color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer">Import</button>
+    </div>
+  </div>
+</div>
 
 <!-- Add CB Key Modal -->
 <div class="modal-overlay" id="addCBModal" onclick="if(event.target===this)closeAddCBModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">

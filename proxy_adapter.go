@@ -6,12 +6,17 @@ package main
 import (
 	"net/http"
 
+	"foxrouters/internal/auth"
 	"foxrouters/internal/proxy"
 	"foxrouters/internal/upstream"
+
+	"github.com/gin-gonic/gin"
 )
 
 // proxyRequest preserves the lowercase name used by main.go's routes wiring.
-var proxyRequest = proxy.ProxyRequest
+var proxyRequest = func(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, registry *proxy.CustomRegistry, combos *proxy.ComboRegistry, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+	return proxy.ProxyRequest(grokAM, cbKM, hc, authMgr, registry, combos, cfKM)
+}
 
 // v1.3.0 — custom models + aliases registry.
 type CustomRegistry = proxy.CustomRegistry

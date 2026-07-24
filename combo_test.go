@@ -152,7 +152,7 @@ func TestComboInModelsList(t *testing.T) {
 		Description: "test",
 	})
 
-	h := proxy.ProxyRequest(nil, nil, nil, nil, nil, comboReg)
+	h := proxy.ProxyRequest(nil, nil, nil, nil, nil, comboReg, nil)
 
 	r := gin.New()
 	r.GET("/v1/models", h)

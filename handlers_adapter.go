@@ -66,6 +66,12 @@ var (
 	handleToggleProxy  = handlers.HandleToggleProxy
 	handleTestProxy    = handlers.HandleTestProxy
 
+	// CF (cloudflare cf/*) handlers
+	handleImportCFKey     = handlers.HandleImportCFKey
+	handleImportCFKeyBulk = handlers.HandleImportCFKeyBulk
+	handleDeleteCFKey     = handlers.HandleDeleteCFKey
+	handleCFStats         = handlers.HandleCFStats
+
 	// v1.6.0 — Cloudflare Tunnel (first-class Go feature)
 	handleTunnelStatus  = handlers.HandleTunnelStatus
 	handleTunnelEnable  = handlers.HandleTunnelEnable
@@ -76,8 +82,8 @@ var (
 // Function wrappers for handlers whose signature changed to accept
 // the session store (P3-3). Var aliases don't work because the
 // function type no longer matches the package-main call site.
-func handleHealth(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, am *auth.Manager, sessions *auth.SessionStore) gin.HandlerFunc {
-	return handlers.HandleHealth(grokAM, cbKM, hc, am, sessions)
+func handleHealth(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, am *auth.Manager, sessions *auth.SessionStore, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+	return handlers.HandleHealth(grokAM, cbKM, hc, am, sessions, cfKM)
 }
 func handleLogin(am *auth.Manager, sessions *auth.SessionStore) gin.HandlerFunc {
 	return handlers.HandleLogin(am, sessions)

@@ -11,7 +11,7 @@ import (
 // updatePoolGauges snapshots pool sizes into active/disabled gauges.
 // Called every 10s from a background ticker — cheap RLock walk, no
 // hot-path overhead.
-func updatePoolGauges(grokAM *GrokAccountManager, cbKM *CBKeyManager, authMgr *AuthManager) {
+func updatePoolGauges(grokAM *GrokAccountManager, cbKM *CBKeyManager, authMgr *AuthManager, cfKM *CFKeyManager) {
 	if grokAM != nil {
 		var gActive, gDisabled int
 		for _, a := range grokAM.GetAll() {
@@ -34,6 +34,18 @@ func updatePoolGauges(grokAM *GrokAccountManager, cbKM *CBKeyManager, authMgr *A
 			}
 		}
 		metrics.SetPoolGauges("codebuddy", cActive, cDisabled)
+	}
+	if cfKM != nil {
+		var cfActive, cfDisabled int
+		for _, k := range cfKM.GetAll() {
+			_, _, disabled := k.Stats()
+			if disabled {
+				cfDisabled++
+			} else {
+				cfActive++
+			}
+		}
+		metrics.SetPoolGauges("cloudflare", cfActive, cfDisabled)
 	}
 	if authMgr != nil {
 		var aActive, aDisabled int

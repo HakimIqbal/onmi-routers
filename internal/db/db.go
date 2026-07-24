@@ -30,6 +30,7 @@ import (
 const (
 	RK_GROK_ACCOUNT = "grok:account:" // HASH: access_token, refresh_token, expires_at, disabled, etc.
 	RK_CB_KEY       = "cb:key:"       // HASH: credits_used, total_requests, disabled
+	RK_CF_KEY       = "cf:account:"   // HASH: token, quota_used, disabled (Cloudflare cf/* pool)
 	RK_GATEWAY_KEY  = "gw:key:"       // HASH: name, total_requests
 	RK_RATE_LIMIT   = "rate:"         // STRING: token bucket state per client key
 
@@ -164,6 +165,22 @@ type GatewayKeyDTO struct {
 	Requests      int64
 	CreatedAt     time.Time
 	Disabled      bool
+}
+
+// CFKeyDTO is the persisted shape of a Cloudflare account (cf/* pool).
+// Each account is a distinct Cloudflare account: its own AccountID + static
+// API token. quota_used/quota_limit track the best-effort daily-quota
+// estimate used by the weighted round-robin picker; quota_date is the UTC
+// day the running counter was last reset.
+type CFKeyDTO struct {
+	AccountID  string
+	Token      string
+	QuotaUsed  float64
+	QuotaLimit float64
+	QuotaDate  string // YYYY-MM-DD (UTC) of last quota_used reset
+	TotalReqs  int64
+	Disabled   bool
+	DisabledAt time.Time // zero = permanent disable (banned/dead)
 }
 
 // CBKeyDTO is the persisted shape of a CodeBuddy pool key.
@@ -444,6 +461,66 @@ func (s *Store) SaveGatewayKey(dto GatewayKeyDTO) {
 }
 
 // LoadGatewayKeys scans Redis for all gateway keys and returns them as DTOs.
+// LoadCFKeys scans Redis for all Cloudflare accounts and returns raw HASH
+// maps keyed by AccountID. Parsed by internal/upstream's CFKeyManager.
+func (s *Store) LoadCFKeys() (map[string]map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pattern := RK_CF_KEY + "*"
+	iter := s.rdb.Scan(ctx, 0, pattern, 100).Iterator()
+	results := make(map[string]map[string]string)
+
+	for iter.Next(ctx) {
+		key := iter.Val()
+		accountID := key[len(RK_CF_KEY):]
+		vals, err := s.rdb.HGetAll(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+		results[accountID] = vals
+	}
+	return results, iter.Err()
+}
+
+// SaveCFKey writes a Cloudflare account state to Redis (best-effort).
+func (s *Store) SaveCFKey(dto CFKeyDTO) {
+	if s == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	disabledAt := dto.DisabledAt.Unix()
+	data := map[string]interface{}{
+		"account_id":   dto.AccountID,
+		"token":        dto.Token,
+		"quota_used":   dto.QuotaUsed,
+		"quota_limit":  dto.QuotaLimit,
+		"quota_date":   dto.QuotaDate,
+		"total_requests": dto.TotalReqs,
+		"disabled":     dto.Disabled,
+		"disabled_at":  disabledAt,
+		"updated_at":   time.Now().Unix(),
+	}
+	rk := RK_CF_KEY + dto.AccountID
+	if err := s.rdb.HSet(ctx, rk, data).Err(); err != nil {
+		slog.Warn("HSet failed", "module", "db-redis", "key", maskRedisKey(rk), "error", err)
+	}
+}
+
+// DeleteCFKey removes the Redis HASH for a Cloudflare account.
+func (s *Store) DeleteCFKey(accountID string) {
+	if s == nil || s.rdb == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if err := s.rdb.Del(ctx, RK_CF_KEY+accountID).Err(); err != nil {
+		slog.Warn("DEL cf key failed", "module", "db-redis", "account", accountID, "error", err)
+	}
+}
+
 func (s *Store) LoadGatewayKeys() ([]GatewayKeyDTO, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

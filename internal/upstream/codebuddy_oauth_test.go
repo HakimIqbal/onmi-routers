@@ -331,7 +331,7 @@ func TestProxyCodeBuddyOAuthBearerAT(t *testing.T) {
 	km := NewCBKeyManager(nil)
 	km.AddOAuthAccount("oauth@cb.test", "at_secret_xyz", "rt_secret", time.Now().Add(time.Hour))
 
-	hc := NewHealthChecker(nil, km)
+	hc := NewHealthChecker(nil, km, nil)
 	// Keep circuit closed
 	_ = hc
 
@@ -403,7 +403,7 @@ func TestProxyCodeBuddyOAuth401RefreshRetry(t *testing.T) {
 	// we want the 401 path to trigger Refresh.
 	km.AddOAuthAccount("retry@cb.test", "at_stale", "rt_stale", time.Now().Add(24*time.Hour))
 
-	hc := NewHealthChecker(nil, km)
+	hc := NewHealthChecker(nil, km, nil)
 	body := []byte(`{"model":"cb/glm-5.2","messages":[{"role":"user","content":"x"}],"stream":false}`)
 	var bodyMap map[string]any
 	_ = json.Unmarshal(body, &bodyMap)
@@ -453,7 +453,7 @@ func TestProxyCodeBuddyAPIKeyPathUnchanged(t *testing.T) {
 	km := NewCBKeyManager(nil)
 	km.AddKey("ck_api_key_legacy_xyz")
 
-	hc := NewHealthChecker(nil, km)
+	hc := NewHealthChecker(nil, km, nil)
 	body := []byte(`{"model":"cb/glm-5.2","messages":[{"role":"user","content":"x"}],"stream":false}`)
 	var bodyMap map[string]any
 	_ = json.Unmarshal(body, &bodyMap)
@@ -489,7 +489,7 @@ func TestProxyCodeBuddyAPIKey401PermanentDisable(t *testing.T) {
 	km := NewCBKeyManager(nil)
 	km.AddKey("ck_bad_key_xxxx")
 
-	hc := NewHealthChecker(nil, km)
+	hc := NewHealthChecker(nil, km, nil)
 	body := []byte(`{"model":"cb/glm-5.2","messages":[{"role":"user","content":"x"}],"stream":false}`)
 	var bodyMap map[string]any
 	_ = json.Unmarshal(body, &bodyMap)
