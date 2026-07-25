@@ -112,9 +112,15 @@ func writeSSE(c *gin.Context, f http.Flusher, l console.Line) {
 func handleCLIToolsConfig() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		base := strings.TrimRight(c.Request.Host, "/")
-		// Prefer the public origin if behind a tunnel; fall back to host header.
+		// Prefer forwarded headers (set by Cloudflare tunnel / reverse proxy)
+		// so the CLI endpoint reflects the public origin, not 127.0.0.1.
+		if fwd := c.GetHeader("X-Forwarded-Host"); fwd != "" {
+			base = strings.TrimRight(fwd, "/")
+		}
 		scheme := "https"
-		if c.Request.TLS == nil && !strings.Contains(base, "onmi.my.id") {
+		if p := c.GetHeader("X-Forwarded-Proto"); p != "" {
+			scheme = p
+		} else if c.Request.TLS == nil && !strings.Contains(base, "onmi.my.id") {
 			scheme = "http"
 		}
 		endpoint := scheme + "://" + base + "/v1"
