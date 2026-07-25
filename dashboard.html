@@ -1157,6 +1157,24 @@ body {
       Tunnel
     </button>
 
+    <div class="nav-section-label">Features</div>
+    <button class="nav-item" data-route="#/tokensaver" onclick="navigateTo('#/tokensaver')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 13 9 20 9"/><path d="M13 2L5 14h7l-1 8 9-12h-7z"/></svg>
+      Token Saver
+    </button>
+    <button class="nav-item" data-route="#/analytics" onclick="navigateTo('#/analytics')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Usage &amp; Analytics
+    </button>
+    <button class="nav-item" data-route="#/console" onclick="navigateTo('#/console')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      Live Console
+    </button>
+    <button class="nav-item" data-route="#/clitools" onclick="navigateTo('#/clitools')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      CLI Tools
+    </button>
+
   </nav>
   <div class="sidebar-footer">
     <div class="status-row">
@@ -1970,6 +1988,105 @@ body {
 
   </div><!-- /content -->
 
+  <!-- ════════════════ TOKEN SAVER ════════════════ -->
+  <div class="page" id="page-tokensaver">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">RTK (input)</div>
+        <div class="stat-value" style="font-size:20px">−20-40%</div>
+        <div class="stat-sub">tool_result / function_call_output compression</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Caveman (output)</div>
+        <div class="stat-value" style="font-size:20px">−65%</div>
+        <div class="stat-sub">terse, substance-preserving replies</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ponytail (output)</div>
+        <div class="stat-value" style="font-size:20px">−YAGNI</div>
+        <div class="stat-sub">minimal diff, no over-engineering</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 13 9 20 9"/><path d="M13 2L5 14h7l-1 8 9-12h-7z"/></svg>
+        <h3>Token Saver</h3>
+        <span class="head-meta">Compress prompts &amp; outputs to save tokens</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
+          <input type="checkbox" id="tsRtk" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--green)">
+          <div><div style="font-weight:600">RTK Token Saver (input)</div><div style="font-size:12px;color:var(--text-tertiary)">Compresses tool dumps before sending — saves 20-40% input tokens.</div></div>
+        </label>
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
+          <input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--green)">
+          <div><div style="font-weight:600">Caveman Mode (output)</div><div style="font-size:12px;color:var(--text-tertiary)">Injects terse-output directive → up to −65% output tokens.</div></div>
+        </label>
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
+          <input type="checkbox" id="tsPonytail" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--green)">
+          <div><div style="font-weight:600">Ponytail Mode (output)</div><div style="font-size:12px;color:var(--text-tertiary)">Lazy-senior-dev YAGNI code style → fewer tokens, shorter diffs.</div></div>
+        </label>
+        <div id="tsStatus" style="font-size:12px;color:var(--green)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════ USAGE & ANALYTICS ════════════════ -->
+  <div class="page" id="page-analytics">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="anReqs">—</div><div class="stat-sub" id="anReqsSub">last 24h</div></div>
+      <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value" id="anTokens">—</div><div class="stat-sub" id="anTokensSub">in + out</div></div>
+      <div class="stat-card"><div class="stat-label">Total Cost</div><div class="stat-value" id="anCost">—</div><div class="stat-sub">estimated USD</div></div>
+      <div class="stat-card"><div class="stat-label">Avg Latency</div><div class="stat-value" id="anLat">—</div><div class="stat-sub">p50 / p95</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <h3>Per-Model Breakdown</h3>
+        <span class="head-meta" id="anModelMeta">requests · tokens · cost</span>
+        <button class="btn" style="margin-left:auto" onclick="loadAnalytics()">Refresh</button>
+      </div>
+      <div id="anModels" style="margin-top:8px"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <h3>Recent Request Logs</h3>
+        <span class="head-meta">click a row for full JSON</span>
+      </div>
+      <div id="anLogs" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════ LIVE CONSOLE ════════════════ -->
+  <div class="page" id="page-console">
+    <div class="panel">
+      <div class="panel-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <h3>Live Server Console</h3>
+        <span class="head-meta" id="conStatus">connecting…</span>
+        <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="conAutoscroll" checked style="width:14px;height:14px;accent-color:var(--green)"> auto-scroll
+        </label>
+        <button class="btn" onclick="clearConsole()">Clear</button>
+      </div>
+      <div id="conLog" style="margin-top:8px;background:#05080f;border:1px solid var(--border);border-radius:8px;padding:12px;height:60vh;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════ CLI TOOLS ════════════════ -->
+  <div class="page" id="page-clitools">
+    <div class="panel">
+      <div class="panel-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <h3>CLI Tools</h3>
+        <span class="head-meta">Connect your AI coding tools to OnmiRouters</span>
+        <button class="btn" style="margin-left:auto" onclick="loadCLITools()">Generate</button>
+      </div>
+      <div id="cliToolsBody" style="margin-top:8px"></div>
+    </div>
+  </div>
+
   <div class="footer-bar" id="footerUpdate" style="padding:0 28px 16px"></div>
 </div><!-- /main -->
 
@@ -2081,7 +2198,11 @@ var routes = {
   '#/models':   { page: 'page-models',    title: 'Models', meta: 'Usage stats · aliases · custom · combos' },
   '#/proxies':  { page: 'page-proxies',   title: 'Proxies', meta: 'HTTP/SOCKS5 upstream proxy pool · round-robin' },
   '#/tunnel':   { page: 'page-tunnel',    title: 'Tunnel', meta: 'Cloudflare Tunnel · embedded cloudflared · Redis config' },
-  '#/cf':       { page: 'page-cf',        title: 'Cloudflare', meta: 'cf/* upstream · Workers AI accounts · 12k pool' }
+  '#/cf':       { page: 'page-cf',        title: 'Cloudflare', meta: 'cf/* upstream · Workers AI accounts · 12k pool' },
+  '#/tokensaver': { page: 'page-tokensaver', title: 'Token Saver', meta: 'RTK input + Caveman/Ponytail output compression' },
+  '#/analytics': { page: 'page-analytics', title: 'Usage & Analytics', meta: 'Requests · tokens · cost · per-model breakdown' },
+  '#/console':  { page: 'page-console',   title: 'Live Console', meta: 'Real-time gateway server logs (SSE)' },
+  '#/clitools': { page: 'page-clitools',  title: 'CLI Tools', meta: 'Connect Claude Code, Cursor, Codex, Cline & more' }
 };
 
 function navigateTo(hash) {
@@ -2135,6 +2256,20 @@ function router() {
   }
   if (hash === '#/cf') {
     if (typeof loadCF === 'function') loadCF();
+  }
+  if (hash === '#/tokensaver') {
+    if (typeof loadTokenSaver === 'function') loadTokenSaver();
+  }
+  if (hash === '#/analytics') {
+    if (typeof loadAnalytics === 'function') loadAnalytics();
+  }
+  if (hash === '#/console') {
+    if (typeof startConsoleStream === 'function') startConsoleStream();
+  } else {
+    if (typeof stopConsoleStream === 'function') stopConsoleStream();
+  }
+  if (hash === '#/clitools') {
+    if (typeof loadCLITools === 'function') loadCLITools();
   }
 }
 
@@ -4692,6 +4827,180 @@ function renderTunnelStatus(st) {
   var logs = (st.logs && st.logs.length) ? st.logs.join('\n') : 'no output yet';
   document.getElementById('tunLogs').textContent = logs;
   document.getElementById('tunLogsMeta').textContent = st.logs ? (st.logs.length + ' lines') : '';
+}
+
+/* ══════════════════════════════════════════════════════════
+   FEATURE: TOKEN SAVER
+   ══════════════════════════════════════════════════════════ */
+async function loadTokenSaver() {
+  try {
+    var c = await apiFetch('/api/tokensaver');
+    document.getElementById('tsRtk').checked = !!c.rtk;
+    document.getElementById('tsCaveman').checked = !!c.caveman;
+    document.getElementById('tsPonytail').checked = !!c.ponytail;
+  } catch (e) { /* ignore */ }
+}
+
+async function saveTokenSaver() {
+  var body = JSON.stringify({
+    rtk: document.getElementById('tsRtk').checked,
+    caveman: document.getElementById('tsCaveman').checked,
+    ponytail: document.getElementById('tsPonytail').checked
+  });
+  try {
+    await apiFetch('/api/tokensaver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
+    document.getElementById('tsStatus').textContent = '✓ saved · applies to next request';
+    setTimeout(function(){ document.getElementById('tsStatus').textContent=''; }, 2500);
+  } catch (e) {
+    document.getElementById('tsStatus').textContent = '✗ ' + e.message;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   FEATURE: USAGE & ANALYTICS
+   ══════════════════════════════════════════════════════════ */
+async function loadAnalytics() {
+  try {
+    var h = await apiFetch('/history?hours=24');
+    document.getElementById('anReqs').textContent = (h.total_requests || 0).toLocaleString();
+    document.getElementById('anTokens').textContent = ((h.total_tokens_in||0)+(h.total_tokens_out||0)).toLocaleString();
+    document.getElementById('anCost').textContent = '$' + ((h.total_cost_usd||0)).toFixed(6);
+    var p50 = h.p50_latency_ms||0, p95 = h.p95_latency_ms||0;
+    document.getElementById('anLat').textContent = p50 + ' / ' + p95 + 'ms';
+
+    // Per-model breakdown
+    var models = h.models || [];
+    var mh = '<table class="data-table"><thead><tr><th>Model</th><th>Requests</th><th>Tokens In</th><th>Tokens Out</th><th>Cost</th><th>Errors</th></tr></thead><tbody>';
+    if (models.length === 0) {
+      mh += '<tr><td colspan="6" style="color:var(--text-tertiary)">no data in window</td></tr>';
+    }
+    models.slice().sort(function(a,b){return (b.requests||0)-(a.requests||0);}).forEach(function(m){
+      mh += '<tr><td style="font-family:var(--mono);font-size:12px">'+escHtml(m.model||'?')+'</td>'+
+        '<td>'+(m.requests||0).toLocaleString()+'</td>'+
+        '<td>'+(m.tokens_in||0).toLocaleString()+'</td>'+
+        '<td>'+(m.tokens_out||0).toLocaleString()+'</td>'+
+        '<td>$'+(m.cost_usd||0).toFixed(6)+'</td>'+
+        '<td style="color:'+(m.errors?(m.errors>m.requests*0.1?'var(--red)':'var(--yellow)'):'var(--green)')+'">'+(m.errors||0)+'</td></tr>';
+    });
+    mh += '</tbody></table>';
+    document.getElementById('anModels').innerHTML = mh;
+
+    // Recent logs
+    var recent = await apiFetch('/history/recent?limit=25');
+    var rows = (recent.logs||[]);
+    window.analyticsLogs = rows;
+    var lh = '<table class="data-table"><thead><tr><th>Time</th><th>Model</th><th>Status</th><th>Tokens</th><th>Cost</th></tr></thead><tbody>';
+    if (rows.length === 0) lh += '<tr><td colspan="5" style="color:var(--text-tertiary)">no requests yet</td></tr>';
+    rows.forEach(function(r, idx){
+      var ts = r.timestamp ? r.timestamp : (r.created_at ? new Date(r.created_at*1000).toLocaleTimeString() : '—');
+      var statusColor = r.status_code && r.status_code < 400 ? 'var(--green)' : 'var(--red)';
+      lh += '<tr style="cursor:pointer" onclick="openAnalyticsDetail('+idx+')">'+
+        '<td style="font-family:var(--mono);font-size:11px">'+escHtml(ts)+'</td>'+
+        '<td style="font-family:var(--mono);font-size:11px">'+escHtml(r.model||'?')+'</td>'+
+        '<td style="color:'+statusColor+'">'+(r.status_code||'?')+'</td>'+
+        '<td>'+((r.tokens_in||0)+(r.tokens_out||0)).toLocaleString()+'</td>'+
+        '<td>$'+(r.cost_usd||0).toFixed(6)+'</td></tr>';
+    });
+    lh += '</tbody></table>';
+    document.getElementById('anLogs').innerHTML = lh;
+  } catch (e) { /* ignore */ }
+}
+
+/* ══════════════════════════════════════════════════════════
+   FEATURE: LIVE CONSOLE (SSE)
+   ══════════════════════════════════════════════════════════ */
+var _conES = null;
+function startConsoleStream() {
+  stopConsoleStream();
+  var box = document.getElementById('conLog');
+  var st = document.getElementById('conStatus');
+  st.textContent = 'connecting…';
+  try {
+    _conES = new EventSource('/console/stream');
+    _conES.onopen = function(){ st.textContent = '● live'; st.style.color = 'var(--green)'; };
+    _conES.onmessage = function(ev){
+      try {
+        var l = JSON.parse(ev.data);
+        var color = l.level==='error'?'var(--red)':l.level==='warn'?'var(--yellow)':'var(--text-secondary)';
+        var line = document.createElement('div');
+        line.style.color = color;
+        line.textContent = '['+l.ts+'] '+l.level.toUpperCase()+' '+l.msg;
+        box.appendChild(line);
+        if (document.getElementById('conAutoscroll').checked) box.scrollTop = box.scrollHeight;
+        // Cap buffer
+        while (box.childNodes.length > 500) box.removeChild(box.firstChild);
+      } catch(e){}
+    };
+    _conES.onerror = function(){ st.textContent = 'reconnecting…'; st.style.color = 'var(--yellow)'; };
+  } catch(e) { st.textContent = 'unsupported'; }
+}
+function stopConsoleStream() {
+  if (_conES) { _conES.close(); _conES = null; }
+  var st = document.getElementById('conStatus');
+  if (st) { st.textContent = 'stopped'; st.style.color = 'var(--text-tertiary)'; }
+}
+function clearConsole() {
+  var box = document.getElementById('conLog');
+  if (box) box.innerHTML = '';
+}
+
+/* ══════════════════════════════════════════════════════════
+   FEATURE: CLI TOOLS CONFIG GENERATOR
+   ══════════════════════════════════════════════════════════ */
+async function loadCLITools() {
+  var body = document.getElementById('cliToolsBody');
+  body.innerHTML = '<div style="color:var(--text-tertiary)">loading…</div>';
+  try {
+    var cfg = await apiFetch('/api/cli-tools');
+    var ep = cfg.endpoint, key = cfg.apiKey;
+    var clients = cfg.clients || {};
+    var html = '<div style="margin-bottom:16px;font-size:13px;color:var(--text-tertiary)">Point any OpenAI-compatible CLI at <b style="color:var(--green);font-family:var(--mono)">'+escHtml(ep)+'</b> with key <b style="color:var(--green);font-family:var(--mono)">'+escHtml(key)+'</b>.</div>';
+    var order = ['claude-code','codex','cursor','cline','openclaw','continue','roo','copilot'];
+    order.forEach(function(name){
+      var c = clients[name]; if (!c) return;
+      var snippet = '';
+      if (c.env) {
+        snippet = Object.keys(c.env).map(function(k){ return 'export '+k+'="'+c.env[k]+'"'; }).join('\n');
+      } else if (c.config) {
+        snippet = JSON.stringify(c.config, null, 2);
+      }
+      html += '<div class="cli-card" style="margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
+        '<div style="padding:10px 14px;background:var(--surface-2);font-weight:600;display:flex;align-items:center;justify-content:space-between">'+
+          '<span>'+name+'</span>'+
+          '<button class="btn" onclick="copyText(this)" data-copy="'+escAttr(snippet)+'">Copy</button>'+
+        '</div>'+
+        '<pre style="margin:0;padding:12px 14px;font-family:var(--mono);font-size:12px;background:#05080f;overflow-x:auto;white-space:pre-wrap">'+escHtml(snippet)+'</pre>'+
+      '</div>';
+    });
+    // Models list
+    html += '<div class="panel" style="margin-top:8px"><div class="panel-head"><h3>Available Models</h3></div><div style="font-family:var(--mono);font-size:12px;line-height:1.8">'+ (cfg.models||[]).map(function(m){return escHtml(m);}).join('<br>') +'</div></div>';
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = '<div style="color:var(--red)">Error: '+escHtml(e.message)+'</div>';
+  }
+}
+
+function copyText(btn) {
+  var txt = btn.getAttribute('data-copy') || '';
+  navigator.clipboard.writeText(txt).then(function(){
+    var old = btn.textContent; btn.textContent = 'Copied!';
+    setTimeout(function(){ btn.textContent = old; }, 1500);
+  }).catch(function(){ btn.textContent = 'Copy failed'; });
+}
+
+// Reuse the existing request-detail modal for analytics rows.
+// Maps the analytics row index into the shape showDetail() expects, then
+// sets currentDetailId so the JSON lazy-load tabs work off the real DB id.
+function openAnalyticsDetail(idx) {
+  var rows = window.analyticsLogs || [];
+  var r = rows[idx];
+  if (!r) return;
+  // showDetail reads from a global `historyLogs` array keyed by index,
+  // and currentDetailId for /history/detail/:id. Borrow both.
+  window.historyLogs = rows;
+  currentDetailId = r.id;
+  detailJsonLoaded = { req: false, resp: false };
+  showDetail(idx);
 }
 
 function tunCredBadge(label, present) {

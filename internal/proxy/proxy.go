@@ -27,10 +27,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"foxrouters/internal/rtk"
+	"foxrouters/internal/tokensaver"
 )
 
-// RTKEnabled gates the RTK token saver (tool_result compression).
-// Set RTK_ENABLED=false in the env to disable. Default: on.
+// TokenSaver is the shared Token Saver config (RTK input + Caveman/Ponytail
+// output directives). Set via main.go (from Redis/env). Default: RTK on.
+var TokenSaver = tokensaver.DefaultConfig()
+
+// RTKEnabled gates only the input-compression half. Kept for back-compat
+// with env var; prefer TokenSaver.Get().RTK.
 var RTKEnabled = os.Getenv("RTK_ENABLED") != "false"
 
 // ============================================================================
@@ -304,13 +309,21 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			body, _ = json.Marshal(bodyMap)
 		}
 
-		// RTK token saver: compress tool_result / function_call_output blobs
-		// in-place before routing. Fail-open — never aborts the request.
-		if RTKEnabled {
+		// ── Token Saver (RTK input + Caveman/Ponytail output directive) ──
+		// RTK compresses tool_result / function_call_output blobs in-place.
+		// Caveman/Ponytail inject a terse-output system directive. Both are
+		// fail-open — never abort the request.
+		cfg := TokenSaver.Get()
+		if cfg.RTK && RTKEnabled {
 			if stats := rtk.CompressMessages(bodyMap); stats != nil {
 				if log := rtk.FormatLog(stats); log != "" {
 					slog.Info(log)
 				}
+				body, _ = json.Marshal(bodyMap)
+			}
+		}
+		if dir := TokenSaver.Directive(); dir != "" {
+			if tokensaver.InjectDirective(bodyMap, dir) {
 				body, _ = json.Marshal(bodyMap)
 			}
 		}

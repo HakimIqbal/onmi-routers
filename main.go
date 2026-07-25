@@ -22,7 +22,12 @@ import (
 	"time"
 
 	"foxrouters/internal/handlers"
+	"foxrouters/internal/console"
+	"foxrouters/internal/db"
+	"foxrouters/internal/proxy"
 	"foxrouters/internal/ratelimit"
+	"foxrouters/internal/auth"
+	"foxrouters/internal/tokensaver"
 	"foxrouters/internal/tunnel"
 
 	"github.com/gin-gonic/gin"
@@ -56,6 +61,9 @@ func init() {
 	}
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(handler))
+	// Live console mirrors all slog output into the in-process ring buffer
+	// for the dashboard's SSE "Live server console" panel.
+	slog.SetDefault(slog.New(console.NewMultiHandler(handler, LiveConsole.Handler(level))))
 	// Route stdlib "log" package through slog too, so third-party code
 	// (gin.Default's default logger, etc.) shows up in the same stream.
 	log.SetFlags(0)
@@ -68,6 +76,21 @@ func init() {
 // Version is the single source of truth for /health, /, and logs.
 // Injected at build time via -ldflags "-X main.Version=<tag>", fallback "dev".
 var Version = "dev"
+
+// LiveConsole is the global ring-buffer + SSE hub for the dashboard's
+// "Live server console" panel. Initialized in init().
+var LiveConsole = console.New(500)
+
+// TokenSaverCfg is the shared Token Saver config (RTK + Caveman + Ponytail).
+// Loaded from Redis (key "tokensaver:cfg") at startup if present.
+var TokenSaverCfg = tokensaver.DefaultConfig()
+
+// dbRef + authMgrRef are package-level mirrors of the local main() vars,
+// exposed so feature handlers (features_handlers.go) can reach Redis + auth.
+var (
+	dbRef      *db.Store
+	authMgrRef *auth.Manager
+)
 
 const (
 	DEFAULT_PORT = "20130"
@@ -327,6 +350,16 @@ func main() {
 	r.POST("/api/tunnel/disable", csrfGuard(), adminAuth, handleTunnelDisable(tunnelMgr))
 	r.POST("/api/tunnel/restart", csrfGuard(), adminAuth, handleTunnelRestart(tunnelMgr))
 
+	// ── Token Saver (RTK + Caveman + Ponytail) admin API ──
+	r.GET("/api/tokensaver", adminAuth, handleGetTokenSaver())
+	r.POST("/api/tokensaver", csrfGuard(), adminAuth, handleSetTokenSaver())
+
+	// ── Live server console (SSE) ──
+	r.GET("/console/stream", adminAuth, handleConsoleStream())
+
+	// ── CLI Tools config generator (9Router-style client setup) ──
+	r.GET("/api/cli-tools", adminAuth, handleCLIToolsConfig())
+
 	// /v1/*path catch-all — gin's httprouter doesn't allow a static
 	// /v1/messages segment alongside /v1/*path, so we dispatch the
 	// Anthropic Messages API adapter from inside the catch-all (POST only).
@@ -384,6 +417,20 @@ func main() {
 		}(),
 		"db", "redis+ch")
 	slog.Info("dashboard ready", "module", "server", "url", fmt.Sprintf("http://localhost:%s/dashboard", port))
+
+	// Token Saver: load persisted config from Redis (key "tokensaver:cfg"),
+	// then sync into the proxy package global so the hot path reads it.
+	dbRef = db
+	authMgrRef = authMgr
+	if rc := db.Redis(); rc != nil {
+		if raw, err := rc.Get(context.Background(), "tokensaver:cfg").Result(); err == nil && raw != "" {
+			TokenSaverCfg.FromJSON(raw)
+			slog.Info("loaded token saver config from redis", "cfg", raw)
+		}
+	}
+	proxy.TokenSaver = TokenSaverCfg
+	slog.Info("token saver active", "rtk", TokenSaverCfg.Get().RTK,
+		"caveman", TokenSaverCfg.Get().Caveman, "ponytail", TokenSaverCfg.Get().Ponytail)
 
 	// Graceful shutdown: drain in-flight requests, flush async DB logs.
 	// Timeouts: ReadHeaderTimeout protects against Slowloris; WriteTimeout
