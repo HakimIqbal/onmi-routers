@@ -591,6 +591,86 @@ body {
 .data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .data-table .muted { color: var(--text-tertiary); }
 
+/* ── Feature pages: polished components ── */
+/* Token Saver toggle rows */
+.feat-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; margin-bottom: 10px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); transition: border-color var(--tc), background var(--tc);
+}
+.feat-row:hover { border-color: var(--border-bright); background: var(--bg-elevated); }
+.feat-row .feat-ico {
+  width: 34px; height: 34px; flex-shrink:0; border-radius: 9px;
+  display: grid; place-items: center; color: var(--brand);
+  background: var(--brand-bg); border: 1px solid var(--brand-subtle);
+}
+.feat-row .feat-ico svg { width: 17px; height: 17px; }
+.feat-row .feat-body { flex: 1; min-width: 0; }
+.feat-row .feat-title { font-weight: 600; font-size: 13.5px; color: var(--text-primary); }
+.feat-row .feat-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.45; }
+/* iOS-style switch */
+.switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch .track {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: var(--bg-input); border: 1px solid var(--border-strong);
+  transition: background var(--tc), border-color var(--tc);
+}
+.switch .thumb {
+  position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--text-secondary);
+  transition: transform var(--tc), background var(--tc);
+}
+.switch input:checked ~ .track { background: var(--brand-subtle); border-color: var(--brand); }
+.switch input:checked ~ .thumb { transform: translateX(18px); background: var(--brand); }
+
+/* CLI tool cards */
+.cli-card { margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-panel); }
+.cli-card .cli-head {
+  padding: 11px 14px; background: var(--bg-elevated);
+  font-weight: 600; font-size: 13px; color: var(--text-primary);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.cli-card .cli-head .cli-tag { color: var(--brand); font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.cli-card pre {
+  margin: 0; padding: 13px 14px; font-family: var(--mono); font-size: 12px;
+  background: var(--bg-input); color: var(--text-secondary); overflow-x: auto;
+  white-space: pre-wrap; word-break: break-all; line-height: 1.6;
+}
+.cli-card pre .tok-key { color: var(--brand); }
+.cli-endpoint {
+  font-family: var(--mono); font-size: 12.5px; color: var(--green);
+  background: var(--green-subtle); border: 1px solid rgba(34,197,94,0.25);
+  padding: 8px 12px; border-radius: var(--radius-sm); word-break: break-all;
+}
+
+/* Console log lines */
+#conLog { font-family: var(--mono); font-size: 12px; line-height: 1.65; }
+.log-line { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); white-space: pre-wrap; word-break: break-word; }
+.log-line .log-ts { color: var(--text-quaternary); }
+.log-line .log-lvl { font-weight: 700; margin: 0 6px; }
+.lvl-INFO { color: var(--text-secondary); } .l-INFO { color: var(--brand); }
+.lvl-WARN { color: var(--yellow); } .l-WARN { color: var(--yellow); }
+.lvl-ERROR { color: var(--red); } .l-ERROR { color: var(--red); }
+.lvl-DEBUG { color: var(--text-tertiary); } .l-DEBUG { color: var(--brand-violet); }
+
+/* Status badge (console + analytics) */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
+}
+.status-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); }
+.status-badge.live { color: var(--green); border-color: rgba(34,197,94,0.3); }
+.status-badge.live .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-badge.warn { color: var(--yellow); border-color: rgba(234,179,8,0.3); }
+.status-badge.warn .dot { background: var(--yellow); }
+
+/* per-model bar */
+.model-bar-wrap { background: var(--bg-input); border-radius: 4px; height: 6px; overflow: hidden; min-width: 60px; }
+.model-bar { height: 100%; background: linear-gradient(90deg, var(--brand), var(--brand-violet)); border-radius: 4px; }
+.muted-cell { color: var(--text-tertiary); font-size: 12px; }
+
 
 .cap-badge {
   display: inline-flex;
@@ -2008,17 +2088,17 @@ body {
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">RTK (input)</div>
-        <div class="stat-value" style="font-size:20px">−20-40%</div>
-        <div class="stat-sub">tool_result / function_call_output compression</div>
+        <div class="stat-value" style="font-size:22px">−20-40%</div>
+        <div class="stat-sub">tool_result / function_call compression</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Caveman (output)</div>
-        <div class="stat-value" style="font-size:20px">−65%</div>
+        <div class="stat-value" style="font-size:22px">−65%</div>
         <div class="stat-sub">terse, substance-preserving replies</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Ponytail (output)</div>
-        <div class="stat-value" style="font-size:20px">−YAGNI</div>
+        <div class="stat-value" style="font-size:22px">−YAGNI</div>
         <div class="stat-sub">minimal diff, no over-engineering</div>
       </div>
     </div>
@@ -2028,21 +2108,35 @@ body {
         <h3>Token Saver</h3>
         <span class="head-meta">Compress prompts &amp; outputs to save tokens</span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:14px;margin-top:8px">
-        <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
-          <input type="checkbox" id="tsRtk" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--brand)">
-          <div><div style="font-weight:600">RTK Token Saver (input)</div><div style="font-size:12px;color:var(--text-tertiary)">Compresses tool dumps before sending — saves 20-40% input tokens.</div></div>
-        </label>
-        <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
-          <input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--brand)">
-          <div><div style="font-weight:600">Caveman Mode (output)</div><div style="font-size:12px;color:var(--text-tertiary)">Injects terse-output directive → up to −65% output tokens.</div></div>
-        </label>
-        <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
-          <input type="checkbox" id="tsPonytail" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--brand)">
-          <div><div style="font-weight:600">Ponytail Mode (output)</div><div style="font-size:12px;color:var(--text-tertiary)">Lazy-senior-dev YAGNI code style → fewer tokens, shorter diffs.</div></div>
-        </label>
-        <div id="tsStatus" style="font-size:12px;color:var(--green)"></div>
+
+      <div class="feat-row">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></div>
+        <div class="feat-body">
+          <div class="feat-title">RTK Token Saver (input)</div>
+          <div class="feat-desc">Compresses tool dumps &amp; function outputs before sending — saves 20-40% input tokens.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="tsRtk" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
       </div>
+
+      <div class="feat-row">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="feat-body">
+          <div class="feat-title">Caveman Mode (output)</div>
+          <div class="feat-desc">Injects terse-output directive → up to −65% output tokens per response.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
+      </div>
+
+      <div class="feat-row">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <div class="feat-body">
+          <div class="feat-title">Ponytail Mode (output)</div>
+          <div class="feat-desc">Lazy-senior-dev YAGNI code style → fewer tokens, shorter diffs.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="tsPonytail" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
+      </div>
+
+      <div id="tsStatus" style="font-size:12.5px;color:var(--green);margin-top:4px;min-height:16px"></div>
     </div>
   </div>
 
@@ -2079,13 +2173,13 @@ body {
       <div class="panel-head">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         <h3>Live Server Console</h3>
-        <span class="head-meta" id="conStatus">connecting…</span>
-        <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+        <span class="status-badge" id="conStatus"><span class="dot"></span>connecting…</span>
+        <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-tertiary)">
           <input type="checkbox" id="conAutoscroll" checked style="width:14px;height:14px;accent-color:var(--brand)"> auto-scroll
         </label>
         <button class="btn" onclick="clearConsole()">Clear</button>
       </div>
-      <div id="conLog" style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;height:60vh;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+      <div id="conLog" style="margin-top:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;height:62vh;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -4891,17 +4985,21 @@ async function loadAnalytics() {
 
     // Per-model breakdown
     var models = h.models || [];
-    var mh = '<table class="data-table"><thead><tr><th>Model</th><th>Requests</th><th>Tokens In</th><th>Tokens Out</th><th>Cost</th><th>Errors</th></tr></thead><tbody>';
+    var maxReq = models.reduce(function(m,x){return Math.max(m, x.requests||0);}, 0) || 1;
+    var mh = '<table class="data-table"><thead><tr><th>Model</th><th class="num">Requests</th><th class="num">Tokens In</th><th class="num">Tokens Out</th><th class="num">Cost</th><th class="num">Errors</th><th style="width:120px">Share</th></tr></thead><tbody>';
     if (models.length === 0) {
-      mh += '<tr><td colspan="6" style="color:var(--text-tertiary)">no data in window</td></tr>';
+      mh += '<tr><td colspan="7" class="muted">no data in window</td></tr>';
     }
     models.slice().sort(function(a,b){return (b.requests||0)-(a.requests||0);}).forEach(function(m){
+      var pct = Math.round(((m.requests||0)/maxReq)*100);
+      var errColor = m.errors ? (m.errors > (m.requests||0)*0.1 ? 'var(--red)' : 'var(--yellow)') : 'var(--green)';
       mh += '<tr><td style="font-family:var(--mono);font-size:12px">'+escHtml(m.model||'?')+'</td>'+
-        '<td>'+(m.requests||0).toLocaleString()+'</td>'+
-        '<td>'+(m.tokens_in||0).toLocaleString()+'</td>'+
-        '<td>'+(m.tokens_out||0).toLocaleString()+'</td>'+
-        '<td>$'+(m.cost_usd||0).toFixed(6)+'</td>'+
-        '<td style="color:'+(m.errors?(m.errors>m.requests*0.1?'var(--red)':'var(--yellow)'):'var(--green)')+'">'+(m.errors||0)+'</td></tr>';
+        '<td class="num">'+(m.requests||0).toLocaleString()+'</td>'+
+        '<td class="num">'+(m.tokens_in||0).toLocaleString()+'</td>'+
+        '<td class="num">'+(m.tokens_out||0).toLocaleString()+'</td>'+
+        '<td class="num">$'+(m.cost_usd||0).toFixed(6)+'</td>'+
+        '<td class="num" style="color:'+errColor+'">'+(m.errors||0)+'</td>'+
+        '<td><div class="model-bar-wrap"><div class="model-bar" style="width:'+pct+'%"></div></div></td></tr>';
     });
     mh += '</tbody></table>';
     document.getElementById('anModels').innerHTML = mh;
@@ -4910,17 +5008,20 @@ async function loadAnalytics() {
     var recent = await apiFetch('/history/recent?limit=25');
     var rows = (recent.logs||[]);
     window.analyticsLogs = rows;
-    var lh = '<table class="data-table"><thead><tr><th>Time</th><th>Model</th><th>Status</th><th>Tokens</th><th>Cost</th></tr></thead><tbody>';
-    if (rows.length === 0) lh += '<tr><td colspan="5" style="color:var(--text-tertiary)">no requests yet</td></tr>';
+    var lh = '<table class="data-table"><thead><tr><th>Time</th><th>Model</th><th>Status</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead><tbody>';
+    if (rows.length === 0) lh += '<tr><td colspan="5" class="muted">no requests yet</td></tr>';
     rows.forEach(function(r, idx){
       var ts = r.timestamp ? r.timestamp : (r.created_at ? new Date(r.created_at*1000).toLocaleTimeString() : '—');
-      var statusColor = r.status_code && r.status_code < 400 ? 'var(--green)' : 'var(--red)';
+      var ok = r.status_code && r.status_code < 400;
+      var statusBadge = ok
+        ? '<span class="status-badge live" style="padding:1px 8px;font-size:11px"><span class="dot"></span>'+(r.status_code||'?')+'</span>'
+        : '<span class="status-badge warn" style="padding:1px 8px;font-size:11px"><span class="dot"></span>'+(r.status_code||'?')+'</span>';
       lh += '<tr style="cursor:pointer" onclick="openAnalyticsDetail('+idx+')">'+
-        '<td style="font-family:var(--mono);font-size:11px">'+escHtml(ts)+'</td>'+
+        '<td style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">'+escHtml(ts)+'</td>'+
         '<td style="font-family:var(--mono);font-size:11px">'+escHtml(r.model||'?')+'</td>'+
-        '<td style="color:'+statusColor+'">'+(r.status_code||'?')+'</td>'+
-        '<td>'+((r.tokens_in||0)+(r.tokens_out||0)).toLocaleString()+'</td>'+
-        '<td>$'+(r.cost_usd||0).toFixed(6)+'</td></tr>';
+        '<td>'+statusBadge+'</td>'+
+        '<td class="num">'+((r.tokens_in||0)+(r.tokens_out||0)).toLocaleString()+'</td>'+
+        '<td class="num">$'+(r.cost_usd||0).toFixed(6)+'</td></tr>';
     });
     lh += '</tbody></table>';
     document.getElementById('anLogs').innerHTML = lh;
@@ -4935,25 +5036,26 @@ function startConsoleStream() {
   stopConsoleStream();
   var box = document.getElementById('conLog');
   var st = document.getElementById('conStatus');
-  st.textContent = 'connecting…';
+  st.className = 'status-badge'; st.innerHTML = '<span class="dot"></span>connecting…';
   try {
     _conES = new EventSource('/console/stream');
-    _conES.onopen = function(){ st.textContent = '● live'; st.style.color = 'var(--green)'; };
+    _conES.onopen = function(){ st.className = 'status-badge live'; st.innerHTML = '<span class="dot"></span>live'; };
     _conES.onmessage = function(ev){
       try {
         var l = JSON.parse(ev.data);
-        var color = l.level==='error'?'var(--red)':l.level==='warn'?'var(--yellow)':'var(--text-secondary)';
+        var lvl = (l.level || 'INFO').toUpperCase();
         var line = document.createElement('div');
-        line.style.color = color;
-        line.textContent = '['+l.ts+'] '+l.level.toUpperCase()+' '+l.msg;
+        line.className = 'log-line';
+        line.innerHTML = '<span class="log-ts">['+escHtml(l.ts)+']</span>'+
+          '<span class="log-lvl l-'+lvl+'">'+lvl+'</span>'+
+          '<span class="lvl-'+lvl+'">'+escHtml(l.msg)+'</span>';
         box.appendChild(line);
         if (document.getElementById('conAutoscroll').checked) box.scrollTop = box.scrollHeight;
-        // Cap buffer
         while (box.childNodes.length > 500) box.removeChild(box.firstChild);
       } catch(e){}
     };
-    _conES.onerror = function(){ st.textContent = 'reconnecting…'; st.style.color = 'var(--yellow)'; };
-  } catch(e) { st.textContent = 'unsupported'; }
+    _conES.onerror = function(){ st.className = 'status-badge warn'; st.innerHTML = '<span class="dot"></span>reconnecting…'; };
+  } catch(e) { st.className = 'status-badge warn'; st.innerHTML = '<span class="dot"></span>unsupported'; }
 }
 function stopConsoleStream() {
   if (_conES) { _conES.close(); _conES = null; }
@@ -4974,8 +5076,8 @@ async function loadCLITools() {
   try {
     var cfg = await apiFetch('/api/cli-tools');
     var ep = cfg.endpoint, key = cfg.apiKey;
+    var html = '<div class="cli-endpoint" style="margin-bottom:16px">Endpoint: '+escHtml(ep)+' &nbsp;·&nbsp; Key: '+escHtml(key)+'</div>';
     var clients = cfg.clients || {};
-    var html = '<div style="margin-bottom:16px;font-size:13px;color:var(--text-tertiary)">Point any OpenAI-compatible CLI at <b style="color:var(--green);font-family:var(--mono)">'+escHtml(ep)+'</b> with key <b style="color:var(--green);font-family:var(--mono)">'+escHtml(key)+'</b>.</div>';
     var order = ['claude-code','codex','cursor','cline','openclaw','continue','roo','copilot'];
     order.forEach(function(name){
       var c = clients[name]; if (!c) return;
@@ -4985,16 +5087,18 @@ async function loadCLITools() {
       } else if (c.config) {
         snippet = JSON.stringify(c.config, null, 2);
       }
-      html += '<div class="cli-card" style="margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
-        '<div style="padding:10px 14px;background:var(--surface-2);font-weight:600;display:flex;align-items:center;justify-content:space-between">'+
-          '<span>'+name+'</span>'+
+      html += '<div class="cli-card">'+
+        '<div class="cli-head"><span>'+name+'</span>'+
           '<button class="btn" onclick="copyText(this)" data-copy="'+escAttr(snippet)+'">Copy</button>'+
         '</div>'+
-        '<pre style="margin:0;padding:12px 14px;font-family:var(--mono);font-size:12px;background:#05080f;overflow-x:auto;white-space:pre-wrap">'+escHtml(snippet)+'</pre>'+
+        '<pre>'+escHtml(snippet)+'</pre>'+
       '</div>';
     });
     // Models list
-    html += '<div class="panel" style="margin-top:8px"><div class="panel-head"><h3>Available Models</h3></div><div style="font-family:var(--mono);font-size:12px;line-height:1.8">'+ (cfg.models||[]).map(function(m){return escHtml(m);}).join('<br>') +'</div></div>';
+    if ((cfg.models||[]).length) {
+      html += '<div class="panel" style="margin-top:8px"><div class="panel-head"><h3>Available Models</h3><span class="head-meta">'+(cfg.models||[]).length+' models</span></div>'+
+        '<div style="font-family:var(--mono);font-size:12px;line-height:1.9;color:var(--text-secondary)">'+ (cfg.models||[]).map(function(m){return escHtml(m);}).join('<br>') +'</div></div>';
+    }
     body.innerHTML = html;
   } catch(e) {
     body.innerHTML = '<div style="color:var(--red)">Error: '+escHtml(e.message)+'</div>';
