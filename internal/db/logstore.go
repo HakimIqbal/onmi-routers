@@ -65,6 +65,8 @@ type RequestLog struct {
 	LatencyMs    int
 	TokensIn     int
 	TokensOut    int
+	Neurons      float64 `json:"neurons"` // Cloudflare Workers AI billing unit
+	CostUsd      float64 `json:"cost_usd"` // estimated USD (OmniRoute-style pricing)
 	ErrorMsg     string
 	InputText    string          // quick preview (last user msg, 500 chars)
 	OutputText   string          // quick preview (first 1000 chars)
@@ -98,6 +100,7 @@ type RequestStats struct {
 	TotalTokensIn  int     `json:"total_tokens_in"`
 	TotalTokensOut int     `json:"total_tokens_out"`
 	TotalTokens    int     `json:"total_tokens"`
+	TotalCostUsd   float64 `json:"total_cost_usd"`
 }
 
 // ModelStats is per-model breakdown of RequestStats (dashboard by_model).
@@ -109,6 +112,7 @@ type ModelStats struct {
 	TotalTokensIn  int     `json:"total_tokens_in"`
 	TotalTokensOut int     `json:"total_tokens_out"`
 	TotalTokens    int     `json:"total_tokens"`
+	TotalCostUsd   float64 `json:"total_cost_usd"`
 }
 
 // RecentRequest is the previews row used by /history/recent.

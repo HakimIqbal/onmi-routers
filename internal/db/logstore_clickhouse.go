@@ -103,6 +103,8 @@ func (c *clickhouseStore) EnsureSchema(ctx context.Context) error {
 			latency_ms UInt32,
 			tokens_in UInt32,
 			tokens_out UInt32,
+			neurons Float64 DEFAULT 0,
+			cost_usd Float64 DEFAULT 0,
 			error_msg String,
 			input_text String,
 			output_text String,
@@ -160,7 +162,7 @@ func (c *clickhouseStore) InsertRequestBatch(ctx context.Context, batch []Reques
 	}
 	b, err := c.conn.PrepareBatch(ctx, `INSERT INTO request_logs (
 		id, timestamp, request_id, client_key, model, upstream, account_id,
-		status_code, latency_ms, tokens_in, tokens_out, error_msg,
+		status_code, latency_ms, tokens_in, tokens_out, neurons, cost_usd, error_msg,
 		input_text, output_text, request_body, response_body
 	)`)
 	if err != nil {
@@ -183,6 +185,8 @@ func (c *clickhouseStore) InsertRequestBatch(ctx context.Context, batch []Reques
 			uint32(max0(r.LatencyMs)),
 			uint32(max0(r.TokensIn)),
 			uint32(max0(r.TokensOut)),
+			r.Neurons,
+			r.CostUsd,
 			r.ErrorMsg,
 			r.InputText,
 			r.OutputText,
@@ -245,14 +249,16 @@ func (c *clickhouseStore) GetRequestStats(ctx context.Context, since time.Time) 
 			countIf(status_code >= 400),
 			ifNull(avg(latency_ms), 0),
 			ifNull(sum(tokens_in), 0),
-			ifNull(sum(tokens_out), 0)
+			ifNull(sum(tokens_out), 0),
+			ifNull(sum(cost_usd), 0)
 		FROM request_logs
 		WHERE timestamp >= ?
 	`, since.UTC())
 	var total, errors uint64
 	var avg float64
 	var tin, tout uint64
-	if err := row.Scan(&total, &errors, &avg, &tin, &tout); err != nil {
+	var cost float64
+	if err := row.Scan(&total, &errors, &avg, &tin, &tout, &cost); err != nil {
 		return nil, err
 	}
 	stats.TotalRequests = int(total)
@@ -261,6 +267,7 @@ func (c *clickhouseStore) GetRequestStats(ctx context.Context, since time.Time) 
 	stats.TotalTokensIn = int(tin)
 	stats.TotalTokensOut = int(tout)
 	stats.TotalTokens = int(tin + tout)
+	stats.TotalCostUsd = cost
 	if stats.TotalRequests > 0 {
 		stats.ErrorRate = float64(stats.TotalErrors) / float64(stats.TotalRequests) * 100
 	}
@@ -275,7 +282,8 @@ func (c *clickhouseStore) GetModelStats(ctx context.Context, since time.Time, li
 			countIf(status_code >= 400) AS total_errors,
 			ifNull(avg(latency_ms), 0) AS avg_latency,
 			ifNull(sum(tokens_in), 0) AS tokens_in,
-			ifNull(sum(tokens_out), 0) AS tokens_out
+			ifNull(sum(tokens_out), 0) AS tokens_out,
+			ifNull(sum(cost_usd), 0) AS cost_usd
 		FROM request_logs
 		WHERE timestamp >= ?
 		GROUP BY model
@@ -290,8 +298,8 @@ func (c *clickhouseStore) GetModelStats(ctx context.Context, since time.Time, li
 	for rows.Next() {
 		var m ModelStats
 		var tr, te, tin, tout uint64
-		var avg float64
-		if err := rows.Scan(&m.Model, &tr, &te, &avg, &tin, &tout); err != nil {
+		var avg, cost float64
+		if err := rows.Scan(&m.Model, &tr, &te, &avg, &tin, &tout, &cost); err != nil {
 			continue
 		}
 		m.TotalRequests = int(tr)
@@ -300,6 +308,7 @@ func (c *clickhouseStore) GetModelStats(ctx context.Context, since time.Time, li
 		m.TotalTokensIn = int(tin)
 		m.TotalTokensOut = int(tout)
 		m.TotalTokens = int(tin + tout)
+		m.TotalCostUsd = cost
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {

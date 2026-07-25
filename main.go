@@ -137,11 +137,20 @@ func main() {
 		slog.Warn("custom registry Load failed, starting empty", "module", "custom", "error", err)
 	}
 
-	// Combos registry (v1.4.0). Redis-backed, cached in memory.
-	comboReg := NewComboRegistry(db)
+	// Combos registry (v1.4.0). Redis-backed, cached in memory. Wired to
+	// the health checker so latency/cost routing + self-healer work.
+	comboReg := NewComboRegistry(db, hc)
 	if err := comboReg.Load(); err != nil {
 		slog.Warn("combo registry Load failed, starting empty", "module", "combo", "error", err)
 	}
+	// Self-healer worker: logs combos with OPEN-upstream models every 30s.
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			comboReg.Heal()
+		}
+	}()
 
 	// Proxy pool (v1.5.0). Redis-backed, cached in memory. Wired into
 	// internal/upstream so Grok / CodeBuddy / token-refresh HTTP calls

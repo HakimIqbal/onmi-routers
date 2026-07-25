@@ -383,7 +383,7 @@ curl -X POST http://127.0.0.1:20130/api/proxies \
 ```bash
 curl -X POST http://127.0.0.1:20130/api/proxies/abc12345/test \
   -H "Authorization: Bearer $KEY"
-# → {"success":true,"ip":"104.28.245.128","latency_ms":554}
+# → {"success":true,"ip":"<egress-ip>","latency_ms":554}
 ```
 
 **Toggle proxy:**

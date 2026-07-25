@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<title>FoxRouters</title>
+<title>OnmiRouters</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;510;590;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -18,54 +18,56 @@
    No shadows — luminance stepping for elevation
    ────────────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds — refined dark (GitHub-dark inspired) */
-  --bg:           #0d1117;
-  --bg-panel:     #161b22;
-  --bg-elevated:  #21262d;
-  --bg-hover:     rgba(255,255,255,0.04);
-  --bg-input:     #0d1117;
+  /* Backgrounds — Enterprise Gateway OLED (ui-ux-pro-max spec) */
+  --bg:           #0A0F1A;
+  --bg-panel:     #0F172A;
+  --bg-elevated:  #1E293B;
+  --bg-hover:     rgba(255,255,255,0.035);
+  --bg-input:     #0B1220;
 
   /* Text */
-  --text-primary:    #e6edf3;
-  --text-secondary:  #9dabb8;
-  --text-tertiary:   #6e7681;
-  --text-quaternary: #484f58;
+  --text-primary:    #F8FAFC;
+  --text-secondary:  #94A3B8;
+  --text-tertiary:   #64748B;
+  --text-quaternary: #475569;
 
-  /* Brand — indigo */
-  --brand:       #6366f1;
-  --brand-hover: #818cf8;
-  --brand-violet:#7170ff;
-  --brand-bg:    rgba(99,102,241,0.10);
-  --brand-subtle:rgba(99,102,241,0.15);
+  /* Brand — cyan (developer-tool accent) */
+  --brand:       #22D3EE;
+  --brand-hover: #67E8F9;
+  --brand-violet:#818CF8;
+  --brand-bg:    rgba(34,211,238,0.10);
+  --brand-subtle:rgba(34,211,238,0.15);
+  --accent-cyan: #22D3EE;
 
-  /* Borders */
-  --border:        #30363d;
-  --border-strong: rgba(255,255,255,0.10);
-  --border-bright: rgba(255,255,255,0.16);
-  --border-muted:  #21262d;
-
-  /* Status */
-  --green:   #3fb950;
+  /* Accent — green (status/CTA/healthy, OmniRoute-style) */
+  --green:   #22C55E;
+  --green-hover: #16A34A;
   --emerald: #10b981;
-  --green-subtle: rgba(63,185,80,0.12);
+  --green-subtle: rgba(34,197,94,0.12);
   --red:     #f85149;
   --red-subtle:   rgba(248,81,73,0.12);
   --orange:  #f59e0b;
   --yellow:  #eab308;
   --yellow-subtle:rgba(234,179,8,0.12);
 
+  /* Borders */
+  --border:        #1E293B;
+  --border-strong: rgba(255,255,255,0.10);
+  --border-bright: rgba(255,255,255,0.16);
+  --border-muted:  #162033;
+
   /* Radius */
-  --radius:    8px;
-  --radius-sm: 6px;
-  --radius-xs: 4px;
-  --radius-lg: 12px;
+  --radius:    10px;
+  --radius-sm: 7px;
+  --radius-xs: 5px;
+  --radius-lg: 14px;
 
-  /* Shadows — subtle elevation */
-  --shadow-card:   0 1px 3px rgba(0,0,0,0.3);
-  --shadow-hover:  0 4px 12px rgba(0,0,0,0.35);
-  --shadow-modal:  0 8px 32px rgba(0,0,0,0.5);
+  /* Shadows */
+  --shadow-card:   0 1px 2px rgba(0,0,0,0.4);
+  --shadow-hover:  0 6px 20px rgba(0,0,0,0.45);
+  --shadow-modal:  0 12px 40px rgba(0,0,0,0.6);
 
-  /* Spacing scale (4px base) */
+  /* Spacing scale (4px base, dense dashboard) */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
 
@@ -74,8 +76,8 @@
   --mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace;
 
   /* Transitions */
-  --tc: 150ms ease;
-  --tt: 200ms ease;
+  --tc: 150ms cubic-bezier(0.4,0,0.2,1);
+  --tt: 200ms cubic-bezier(0.4,0,0.2,1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -83,6 +85,59 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Focus rings (accessibility) ── */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible, .nav-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ── Card entrance stagger (ui-ux-pro-max motion 6/10) ── */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stat-card, .panel, .stat-row {
+  animation: cardIn 320ms cubic-bezier(0.16,1,0.3,1) both;
+}
+.stat-card:nth-child(1) { animation-delay: 20ms; }
+.stat-card:nth-child(2) { animation-delay: 50ms; }
+.stat-card:nth-child(3) { animation-delay: 80ms; }
+.stat-card:nth-child(4) { animation-delay: 110ms; }
+.stat-card:nth-child(5) { animation-delay: 140ms; }
+.stat-card:nth-child(6) { animation-delay: 170ms; }
+.stat-card:nth-child(n+7) { animation-delay: 200ms; }
+
+/* ── Buttons (micro-interaction, no emoji) ── */
+.btn, button {
+  font-family: var(--font);
+  transition: background var(--tc), border-color var(--tc), transform var(--tc), box-shadow var(--tc);
+}
+.btn:active, button:active { transform: translateY(1px); }
+
+/* ── Lucide-style SVG icon base ── */
+.icn {
+  width: 14px; height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+  vertical-align: -2px;
+}
+.cap-badge svg.icn, .type-badge svg.icn { width: 13px; height: 13px; }
+
+@media (max-width: 1024px) {
+  .sidebar { width: 64px; }
+  .sidebar .brand-text, .sidebar .nav-label { display: none; }
+}
+@media (max-width: 768px) {
+  .sidebar { position: fixed; z-index: 50; transform: translateX(-100%); }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
 body {
   font-family: var(--font);
@@ -461,6 +516,162 @@ body {
 /* ── Scrollable table container ── */
 .tbl-scroll { max-height: 420px; overflow-y: auto; }
 .tbl-scroll thead { position: sticky; top: 0; background: var(--bg-elevated); z-index: 1; }
+
+/* ── Unified Pager (no more cramped inline styles) ── */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
+}
+.pager .pg-label { color: var(--text-tertiary); white-space: nowrap; }
+.pager select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pager .pg-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all var(--tc);
+}
+.pager .pg-btn:hover:not(:disabled) { border-color: var(--brand); color: var(--text-primary); }
+.pager .pg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pager .pg-num {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 32px;
+  text-align: center;
+  transition: all var(--tc);
+}
+.pager .pg-num:hover { border-color: var(--brand); }
+.pager .pg-active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  cursor: default;
+}
+.pager .pg-info { margin-left: auto; white-space: nowrap; color: var(--text-tertiary); }
+.pager .pg-ellipsis { padding: 0 2px; color: var(--text-tertiary); }
+
+/* ── Numeric column alignment (Models / stats) ── */
+.tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl td.mono.num { text-align: right; }
+
+/* ── Capability badges (uniform height, icon+label) ── */
+.cap-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cap-badge svg.icn { width: 13px; height: 13px; }
+.cap-badge.vision { background: rgba(100,181,246,0.12); color: #7cb8f7; border-color: rgba(100,181,246,0.20); }
+.cap-badge.reasoning { background: rgba(171,71,188,0.12); color: #c77fd6; border-color: rgba(171,71,188,0.20); }
+.cap-badge.code { background: rgba(129,199,132,0.12); color: #8fd694; border-color: rgba(129,199,132,0.20); }
+.cap-badge.fast { background: rgba(255,183,77,0.12); color: #ffc266; border-color: rgba(255,183,77,0.20); }
+.cap-badge.longctx { background: rgba(255,138,101,0.12); color: #ffab8a; border-color: rgba(255,138,101,0.20); }
+.cap-badge.effort { background: rgba(34,211,238,0.12); color: var(--brand); border-color: rgba(34,211,238,0.22); }
+.cap-badge.image { background: rgba(244,143,177,0.12); color: #f79ec0; border-color: rgba(244,143,177,0.20); }
+.cap-badge.audio { background: rgba(129,212,250,0.12); color: #95dcfa; border-color: rgba(129,212,250,0.20); }
+.cap-badge.embed { background: rgba(186,104,200,0.12); color: #d28fd9; border-color: rgba(186,104,200,0.20); }
+.cap-none { color: var(--text-tertiary); font-size: 11px; }
+
+/* Combo strategy badges */
+.strat-badge { display:inline-block; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:600; }
+.strat-fb   { background:rgba(100,150,255,0.15);  color:var(--brand); }
+.strat-rr   { background:rgba(90,200,120,0.15);    color:var(--emerald); }
+.strat-lat  { background:rgba(34,197,94,0.15);      color:var(--green); }
+.strat-cost { background:rgba(34,197,94,0.12);      color:var(--green); border:1px solid rgba(34,197,94,0.3); }
+
+/* Cost accent card (OmniRoute-style spend tracking) */
+.stat-card.accent-cost {
+  border-color: rgba(34,197,94,0.28);
+  background: linear-gradient(180deg, rgba(34,197,94,0.07), var(--bg-panel));
+}
+.stat-card.accent-cost .stat-value { color: var(--green); }
+.stat-card.accent-cost::before {
+  content: "";
+  position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: linear-gradient(180deg, var(--green), transparent);
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.stat-card { position: relative; overflow: hidden; }
+/* ── Type badges (Models page) ── */
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.type-badge.direct { background: rgba(148,163,184,0.12); color: var(--text-secondary); }
+.type-badge.alias { background: rgba(34,211,238,0.12); color: var(--cyan); }
+.type-badge.combo { background: rgba(94,106,210,0.14); color: var(--brand); }
+
+/* ── Models table (alignment + uniform) ── */
+.mtbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.mtbl thead th {
+  text-align: left;
+  padding: 11px 14px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.mtbl tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+.mtbl tbody tr:hover { background: var(--bg-hover); }
+.mtbl td.mono { font-family: var(--mono); font-size: 12px; color: var(--text-primary); }
+.mtbl th.num, .mtbl td.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mtbl th.ctr, .mtbl td.ctr { text-align: center; }
+.mtbl td.err-cell { color: var(--red); font-weight: 600; }
+.mtbl td .cap-badge { margin: 1px 2px 1px 0; }
 
 /* ── Progress bar ── */
 .pbar {
@@ -916,7 +1127,7 @@ body {
         <circle cx="16" cy="19" r="1" fill="rgba(255,255,255,0.9)"/>
       </svg>
     </div>
-    <span class="title">FoxRouters</span>
+    <span class="title">OnmiRouters</span>
     <span class="version" id="version">v5.7</span>
   </div>
   <nav class="sidebar-nav">
@@ -945,10 +1156,7 @@ body {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
       Tunnel
     </button>
-    <button class="nav-item" data-route="#/cf" onclick="navigateTo('#/cf')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20z"/></svg>
-      Cloudflare
-    </button>
+
   </nav>
   <div class="sidebar-footer">
     <div class="status-row">
@@ -994,6 +1202,16 @@ body {
           <div class="stat-value" id="models">—</div>
           <div class="stat-sub">available</div>
         </div>
+        <div class="stat-card accent-cost">
+          <div class="stat-label">Cost (24h)</div>
+          <div class="stat-value" id="cost24h">—</div>
+          <div class="stat-sub" id="cost24hSub">est. USD</div>
+        </div>
+        <div class="stat-card accent-cost">
+          <div class="stat-label">Cost (30d)</div>
+          <div class="stat-value" id="cost30d">—</div>
+          <div class="stat-sub">est. USD</div>
+        </div>
         <div class="stat-card">
           <div class="stat-label">Total Tokens (24h)</div>
           <div class="stat-value" id="totalTokens">—</div>
@@ -1018,6 +1236,11 @@ body {
           <div class="stat-label">CB Errors</div>
           <div class="stat-value" id="cbErrors">—</div>
           <div class="stat-sub" id="cbErrRate"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Cloudflare Accounts</div>
+          <div class="stat-value" id="cfCount">—</div>
+          <div class="stat-sub" id="cfActive"></div>
         </div>
       </div>
 
@@ -1093,6 +1316,7 @@ body {
         <div class="subtabs">
           <button class="subtab active" onclick="showTab(event,'cb')">CodeBuddy Keys</button>
           <button class="subtab" onclick="showTab(event,'grok')">Grok Accounts</button>
+          <button class="subtab" onclick="showTab(event,'cf')">Cloudflare</button>
           <div style="margin-left:auto;display:flex;gap:6px">
             <button class="btn-ghost" id="cbAddBtn" onclick="showAddCBModal()" style="padding:5px 12px;font-size:12px">+ Add Key</button>
             <button class="btn-ghost" id="cbOAuthBtn" onclick="showAddCBOAuthModal()" style="padding:5px 12px;font-size:12px">+ Add OAuth</button>
@@ -1104,6 +1328,9 @@ body {
             <button class="btn-ghost" id="grokBulkBtn" onclick="showBulkGrokModal()" style="padding:5px 12px;font-size:12px;display:none">Bulk Import</button>
             <button class="btn-ghost" id="grokCleanupBtn" onclick="cleanupDisabled('grok')" style="padding:5px 12px;font-size:12px;color:var(--danger);display:none">Cleanup Disabled</button>
             <button class="btn-ghost" id="grokCleanupBannedBtn" onclick="cleanupBanned('grok')" style="padding:5px 12px;font-size:12px;color:var(--danger);display:none">Cleanup Banned</button>
+            <button class="btn-ghost" id="cfAddBtn" onclick="showAddCFModal()" style="padding:5px 12px;font-size:12px;display:none">+ Add Account</button>
+            <button class="btn-ghost" id="cfBulkBtn" onclick="showBulkCFModal()" style="padding:5px 12px;font-size:12px;display:none">Bulk Import</button>
+            <button class="btn-ghost" id="cfCleanupBtn" onclick="cleanupDisabled('cf')" style="padding:5px 12px;font-size:12px;color:var(--danger);display:none">Cleanup Disabled</button>
           </div>
         </div>
         <div id="cbPanel" class="tbl-scroll" style="max-height:500px">
@@ -1114,7 +1341,7 @@ body {
             <tbody id="cbBody"></tbody>
           </table>
         </div>
-        <div id="cbPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
+        <div id="cbPager" style="display:none;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
         <div id="grokPanel" style="display:none">
           <div class="tbl-scroll" style="max-height:500px">
             <table class="tbl">
@@ -1124,41 +1351,22 @@ body {
               <tbody id="grokBody"></tbody>
             </table>
           </div>
-          <div id="grokPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
+          <div id="grokPager" style="display:none;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
         </div>
-      </div>
-    </div>
-
-    <!-- ════════ PAGE: CLOUDFLARE (cf/*) ════════ -->
-    <div class="page" id="page-cf">
-      <div class="panel">
-        <div class="panel-head">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20z"/></svg>
-          <h3>Cloudflare Accounts</h3>
-          <div style="margin-left:auto">
-            <button class="btn-ghost" onclick="loadCF()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              Refresh
-            </button>
+        <div id="cfPanel" style="display:none">
+          <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+            <button class="btn-ghost" onclick="loadCF()" style="padding:5px 12px;font-size:12px">↻ Refresh</button>
           </div>
-        </div>
-        <div class="subtabs">
-          <button class="subtab active">Cloudflare (cf/*)</button>
-          <div style="margin-left:auto;display:flex;gap:6px">
-            <button class="btn-ghost" id="cfAddBtn" onclick="showAddCFModal()" style="padding:5px 12px;font-size:12px">+ Add Account</button>
-            <button class="btn-ghost" id="cfBulkBtn" onclick="showBulkCFModal()" style="padding:5px 12px;font-size:12px">Bulk Import</button>
-            <button class="btn-ghost" id="cfCleanupBtn" onclick="cleanupDisabled('cf')" style="padding:5px 12px;font-size:12px;color:var(--danger)">Cleanup Disabled</button>
+          <div class="tbl-scroll" style="max-height:500px">
+            <table class="tbl">
+              <thead><tr>
+                <th>Account ID</th><th>Token (masked)</th><th>Quota Used</th><th>Quota Limit</th><th>Remaining</th><th>Requests</th><th>Disabled At</th><th>Status</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="cfBody"></tbody>
+            </table>
           </div>
+          <div id="cfPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
         </div>
-        <div id="cfPanel" class="tbl-scroll" style="max-height:500px">
-          <table class="tbl">
-            <thead><tr>
-              <th>Account ID</th><th>Token (masked)</th><th>Quota Used</th><th>Quota Limit</th><th>Remaining</th><th>Requests</th><th>Disabled At</th><th>Status</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="cfBody"></tbody>
-          </table>
-        </div>
-        <div id="cfPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
       </div>
     </div>
 
@@ -1257,8 +1465,10 @@ body {
             <div>
               <label style="font-size:11px;color:var(--text-tertiary);display:block;margin-bottom:4px">Strategy</label>
               <select id="cbxStrategy" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px">
-                <option value="fallback">Fallback</option>
+                <option value="fallback">Fallback (coba urut)</option>
                 <option value="round_robin">Round Robin</option>
+                <option value="latency">Latency (terendah)</option>
+                <option value="cost">Cost (termurah USD)</option>
               </select>
             </div>
             <div>
@@ -1321,6 +1531,7 @@ body {
               <select id="cmUpstream" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px">
                 <option value="codebuddy">codebuddy</option>
                 <option value="grok">grok</option>
+                <option value="cloudflare">cloudflare</option>
               </select>
             </div>
             <div>
@@ -1559,6 +1770,9 @@ body {
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
                 <input type="checkbox" class="px-upstream" data-scope="codebuddy" data-target="add" /> CodeBuddy
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                <input type="checkbox" class="px-upstream" data-scope="cloudflare" data-target="add" /> Cloudflare
+              </label>
             </div>
           </div>
           <div id="pxError" style="display:none;color:var(--red);font-size:12px;padding:6px 10px;background:rgba(255,80,80,0.08);border-radius:var(--radius-sm)"></div>
@@ -1621,6 +1835,9 @@ body {
               </label>
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
                 <input type="checkbox" class="px-upstream" data-scope="codebuddy" data-target="edit" /> CodeBuddy
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                <input type="checkbox" class="px-upstream" data-scope="cloudflare" data-target="edit" /> Cloudflare
               </label>
             </div>
           </div>
@@ -1913,6 +2130,9 @@ function router() {
   } else {
     if (typeof stopTunnelPolling === 'function') stopTunnelPolling();
   }
+  if (hash === '#/accounts') {
+    if (typeof loadAccounts === 'function') loadAccounts();
+  }
   if (hash === '#/cf') {
     if (typeof loadCF === 'function') loadCF();
   }
@@ -2031,12 +2251,16 @@ async function refresh() {
     document.getElementById('grokCount').textContent = health.grok_accounts;
     document.getElementById('cbCount').textContent = health.cb_keys;
     document.getElementById('cbActive').innerHTML = '<span class="ok">' + health.cb_keys_active + ' active</span>';
-    document.getElementById('cfCount').textContent = (health.cf_accounts !== undefined ? health.cf_accounts : '—');
+    var cfC = document.getElementById('cfCount');
+    if (cfC) cfC.textContent = (health.cf_accounts !== undefined ? health.cf_accounts : '—');
     if (health.cf_accounts_active !== undefined) {
       var cfEl = document.getElementById('cfActive');
       if (cfEl) cfEl.innerHTML = '<span class="ok">' + health.cf_accounts_active + ' active</span>';
     }
     document.getElementById('models').textContent = models.data ? models.data.length : '—';
+    var cfModels = (models.data || []).filter(function(m) { return m.owned_by === 'cloudflare' || (m.id || '').indexOf('cf/') === 0 || (m.id || '').indexOf('@cf/') === 0; }).length;
+    var cfmc = document.getElementById('cfModelCount');
+    if (cfmc) cfmc.textContent = cfModels;
 
     var g = health.upstreams.grok, cb = health.upstreams.codebuddy;
 
@@ -2094,8 +2318,9 @@ async function refresh() {
     window._grokPageSize = window._grokPageSize || 50;
     renderGrokPage();
 
-    // Cloudflare (cf/*) — refresh table if on that route (cheap otherwise)
-    if (window.location.hash === '#/cf') loadCF();
+    // Cloudflare (cf/*) — refresh table if the CF subtab is currently visible
+    var cfPanelEl2 = document.getElementById('cfPanel');
+    if (typeof loadCF === 'function' && cfPanelEl2 && cfPanelEl2.style.display !== 'none') loadCF();
 
     // Timestamp
     var ts_str = 'Updated ' + new Date().toLocaleTimeString();
@@ -2106,6 +2331,13 @@ async function refresh() {
     document.getElementById('sidebarStatus').textContent = 'Connection error';
     document.getElementById('sidebarDot').className = 'status-dot err';
   }
+}
+
+// loadAccounts: explicit entry point for the #/accounts route.
+// Delegates to refresh() which fetches /health + /accounts + /cb-stats + /v1/models
+// and renders all three subtab tables (CodeBuddy / Grok / Cloudflare).
+function loadAccounts() {
+  if (typeof refresh === 'function') refresh();
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -2144,40 +2376,41 @@ function renderGrokPage() {
 
   // Pager
   var pager = document.getElementById('grokPager');
-  var html = '';
+  var html = '<div class="pager">';
   // Page size selector
-  html += '<span>Show</span>';
-  html += '<select onchange="window._grokPageSize=parseInt(this.value);window._grokPage=1;renderGrokPage()" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);padding:3px 8px;font-size:12px">';
+  html += '<span class="pg-label">Show</span>';
+  html += '<select onchange="window._grokPageSize=parseInt(this.value);window._grokPage=1;renderGrokPage()">';
   [25, 50, 100, 200].forEach(function(n) {
     html += '<option value="' + n + '"' + (size === n ? ' selected' : '') + '>' + n + '</option>';
   });
   html += '</select>';
   // Prev
-  html += '<button class="pg-btn pg-grok-prev" data-action="prev" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px"' + (page <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
+  html += '<button class="pg-btn pg-grok-prev" data-action="prev"' + (page <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
   // Page numbers
   var maxButtons = 7;
   var fromPg = Math.max(1, page - Math.floor(maxButtons / 2));
   var toPg = Math.min(totalPages, fromPg + maxButtons - 1);
   if (toPg - fromPg < maxButtons - 1) fromPg = Math.max(1, toPg - maxButtons + 1);
   if (fromPg > 1) {
-    html += '<button class="pg-btn pg-grok-num" data-page="1" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px">1</button>';
-    if (fromPg > 2) html += '<span style="padding:0 2px">…</span>';
+    html += '<button class="pg-num pg-grok-num" data-page="1">1</button>';
+    if (fromPg > 2) html += '<span class="pg-ellipsis">…</span>';
   }
   for (var p = fromPg; p <= toPg; p++) {
     if (p === page) {
-      html += '<button style="padding:4px 10px;border:1px solid var(--brand);border-radius:var(--radius-sm);background:var(--brand);color:#fff;font-size:12px;cursor:default">' + p + '</button>';
+      html += '<button class="pg-num pg-active">' + p + '</button>';
     } else {
-      html += '<button class="pg-btn pg-grok-num' + (p === page ? ' pg-active' : '') + '" data-page="' + p + '" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px">' + p + '</button>';
+      html += '<button class="pg-num pg-grok-num" data-page="' + p + '">' + p + '</button>';
     }
   }
   if (toPg < totalPages) {
-    if (toPg < totalPages - 1) html += '<span style="padding:0 2px">…</span>';
-    html += '<button class="pg-btn pg-grok-num" data-page="' + totalPages + '" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px">' + totalPages + '</button>';
+    if (toPg < totalPages - 1) html += '<span class="pg-ellipsis">…</span>';
+    html += '<button class="pg-num pg-grok-num" data-page="' + totalPages + '">' + totalPages + '</button>';
   }
   // Next
-  html += '<button class="pg-btn pg-grok-next" data-action="next" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px"' + (page >= totalPages ? ' disabled' : '') + '>Next ›</button>';
+  html += '<button class="pg-btn pg-grok-next" data-action="next"' + (page >= totalPages ? ' disabled' : '') + '>Next ›</button>';
   // Info
-  html += '<span style="margin-left:auto">' + (start + 1) + '–' + end + ' of ' + all.length + '</span>';
+  html += '<span class="pg-info">' + (start + 1) + '–' + end + ' of ' + all.length + '</span>';
+  html += '</div>';
   pager.innerHTML = html;
 }
 
@@ -2233,35 +2466,36 @@ function renderCBPage() {
   // Pager
   var pager = document.getElementById('cbPager');
   if (!pager) return;
-  var html = '';
-  html += '<span>Show</span>';
-  html += '<select onchange="window._cbPageSize=parseInt(this.value);window._cbPage=1;renderCBPage()" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);padding:3px 8px;font-size:12px">';
+  var html = '<div class="pager">';
+  html += '<span class="pg-label">Show</span>';
+  html += '<select onchange="window._cbPageSize=parseInt(this.value);window._cbPage=1;renderCBPage()">';
   [25, 50, 100, 200].forEach(function(n) {
     html += '<option value="' + n + '"' + (size === n ? ' selected' : '') + '>' + n + '</option>';
   });
   html += '</select>';
-  html += '<button class="pg-btn pg-cb-prev" data-action="prev" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px"' + (page <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
+  html += '<button class="pg-btn pg-cb-prev" data-action="prev"' + (page <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
   var maxButtons = 7;
   var fromPg = Math.max(1, page - Math.floor(maxButtons / 2));
   var toPg = Math.min(totalPages, fromPg + maxButtons - 1);
   if (toPg - fromPg < maxButtons - 1) fromPg = Math.max(1, toPg - maxButtons + 1);
   if (fromPg > 1) {
-    html += '<button class="pg-btn pg-cb-num" data-page="1" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px">1</button>';
-    if (fromPg > 2) html += '<span style="padding:0 2px">…</span>';
+    html += '<button class="pg-num pg-cb-num" data-page="1">1</button>';
+    if (fromPg > 2) html += '<span class="pg-ellipsis">…</span>';
   }
   for (var p = fromPg; p <= toPg; p++) {
     if (p === page) {
-      html += '<button style="padding:4px 10px;border:1px solid var(--brand);border-radius:var(--radius-sm);background:var(--brand);color:#fff;font-size:12px;cursor:default">' + p + '</button>';
+      html += '<button class="pg-num pg-active">' + p + '</button>';
     } else {
-      html += '<button class="pg-btn pg-cb-num" data-page="' + p + '" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px">' + p + '</button>';
+      html += '<button class="pg-num pg-cb-num" data-page="' + p + '">' + p + '</button>';
     }
   }
   if (toPg < totalPages) {
-    if (toPg < totalPages - 1) html += '<span style="padding:0 2px">…</span>';
-    html += '<button class="pg-btn pg-cb-num" data-page="' + totalPages + '" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px">' + totalPages + '</button>';
+    if (toPg < totalPages - 1) html += '<span class="pg-ellipsis">…</span>';
+    html += '<button class="pg-num pg-cb-num" data-page="' + totalPages + '">' + totalPages + '</button>';
   }
-  html += '<button class="pg-btn pg-cb-next" data-action="next" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer;font-size:12px"' + (page >= totalPages ? ' disabled' : '') + '>Next ›</button>';
-  html += '<span style="margin-left:auto">' + (start + 1) + '–' + end + ' of ' + all.length + '</span>';
+  html += '<button class="pg-btn pg-cb-next" data-action="next"' + (page >= totalPages ? ' disabled' : '') + '>Next ›</button>';
+  html += '<span class="pg-info">' + (start + 1) + '–' + end + ' of ' + all.length + '</span>';
+  html += '</div>';
   pager.innerHTML = html;
 }
 
@@ -2273,6 +2507,14 @@ function showTab(e, tab) {
   e.target.classList.add('active');
   document.getElementById('cbPanel').style.display = tab === 'cb' ? '' : 'none';
   document.getElementById('grokPanel').style.display = tab === 'grok' ? '' : 'none';
+  var cbPagerEl = document.getElementById('cbPager');
+  if (cbPagerEl) cbPagerEl.style.display = tab === 'cb' ? '' : 'none';
+  var grokPagerEl = document.getElementById('grokPager');
+  if (grokPagerEl) grokPagerEl.style.display = tab === 'grok' ? '' : 'none';
+  var cfPanelEl = document.getElementById('cfPanel');
+  if (cfPanelEl) cfPanelEl.style.display = tab === 'cf' ? '' : 'none';
+  var cfPagerEl = document.getElementById('cfPager');
+  if (cfPagerEl) cfPagerEl.style.display = tab === 'cf' ? '' : 'none';
   // Toggle add/bulk/cleanup buttons to match active tab
   document.getElementById('cbAddBtn').style.display = tab === 'cb' ? '' : 'none';
   var oauthBtn = document.getElementById('cbOAuthBtn');
@@ -2287,6 +2529,13 @@ function showTab(e, tab) {
   document.getElementById('grokBulkBtn').style.display = tab === 'grok' ? '' : 'none';
   document.getElementById('grokCleanupBtn').style.display = tab === 'grok' ? '' : 'none';
   document.getElementById('grokCleanupBannedBtn').style.display = tab === 'grok' ? '' : 'none';
+  var cfAddBtn = document.getElementById('cfAddBtn');
+  if (cfAddBtn) cfAddBtn.style.display = tab === 'cf' ? '' : 'none';
+  var cfBulkBtn = document.getElementById('cfBulkBtn');
+  if (cfBulkBtn) cfBulkBtn.style.display = tab === 'cf' ? '' : 'none';
+  var cfCleanupBtn = document.getElementById('cfCleanupBtn');
+  if (cfCleanupBtn) cfCleanupBtn.style.display = tab === 'cf' ? '' : 'none';
+  if (tab === 'cf' && typeof loadCF === 'function') loadCF();
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -2331,9 +2580,10 @@ async function loadHistory() {
   try {
     var results = await Promise.all([
       fetchJSON('/history?hours=24'),
+      fetchJSON('/history?hours=720'),
       fetchJSON('/history/recent?limit=50')
     ]);
-    var statsRes = results[0], recentRes = results[1];
+    var statsRes = results[0], stats30 = results[1], recentRes = results[2];
 
     // Update Total Tokens card
     var s = statsRes;
@@ -2343,6 +2593,12 @@ async function loadHistory() {
       var subEl = document.getElementById('totalTokensSub');
       if (subEl) subEl.textContent = 'in:' + (s.total_tokens_in||0) + ' out:' + (s.total_tokens_out||0);
     }
+
+    // Cost cards (OmniRoute-style USD estimate)
+    var c24 = document.getElementById('cost24h');
+    if (c24) c24.textContent = '$' + (s.total_cost_usd || 0).toFixed(2);
+    var c30 = document.getElementById('cost30d');
+    if (c30) c30.textContent = '$' + (stats30.total_cost_usd || 0).toFixed(2);
 
     // History stats cards
     var statsEl = document.getElementById('historyStats');
@@ -2638,10 +2894,12 @@ function formatNum(n) {
    MODELS PAGE
    ══════════════════════════════════════════════════════════ */
 var aliasMap = {
-  'grok-4.5-high':   { upstream: 'grok-4.5', effort: 'high' },
-  'grok-4.5-medium': { upstream: 'grok-4.5', effort: 'medium' },
-  'grok-4.5-low':    { upstream: 'grok-4.5', effort: 'low' },
-  'grok-4.5-xhigh': { upstream: 'grok-4.5', effort: 'high' }
+  'grok-4.5-high':   { effort: 'high' },
+  'grok-4.5-medium': { effort: 'medium' },
+  'grok-4.5-low':    { effort: 'low' },
+  'grok-4.5-xhigh':  { effort: 'xhigh' },
+  'grok-4.5-auto':   { effort: 'auto' },
+  'grok-4.5-none':   { effort: 'none' }
 };
 
 function switchMTab(tab) {
@@ -2759,51 +3017,95 @@ function updateComboSelectedCount() {
 function modelCaps(id) {
   var m = id.toLowerCase();
   var caps = [];
+  var isGrok = m.indexOf('grok-') === 0 || m.indexOf('grok-') >= 0;
+  var isGrokCode = m.indexOf('grok-code') >= 0;
+  var isGrokGeneral = isGrok && !isGrokCode;
 
-  // Vision (multimodal image input)
-  if (m.indexOf('grok-4') >= 0 || m.indexOf('gpt-4o') >= 0 ||
+  // Lucide SVG snippets
+  var ICON = {
+    vision:   '<svg class="icn" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+    reasoning:'<svg class="icn" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>',
+    code:     '<svg class="icn" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>',
+    fast:     '<svg class="icn" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>',
+    longctx:  '<svg class="icn" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+    effort:   '<svg class="icn" viewBox="0 0 24 24"><path d="M3 12h4l3-9 6 18 3-9h4"/></svg>',
+    image:    '<svg class="icn" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>',
+    audio:    '<svg class="icn" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>',
+    embed:    '<svg class="icn" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/></svg>',
+    text:     '<svg class="icn" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>'
+  };
+
+  // Vision (multimodal image input) — only real multimodal models
+  if (isGrokGeneral || m.indexOf('gpt-4o') >= 0 ||
       m.indexOf('gpt-4.1') >= 0 || m.indexOf('gpt-5') >= 0 ||
       m.indexOf('claude') >= 0 || m.indexOf('gemini') >= 0 ||
       m.indexOf('glm-5') >= 0) {
-    caps.push('<span title="Image input" style="padding:2px 6px;border-radius:8px;font-size:10px;background:rgba(100,181,246,0.14);color:#64b5f6;font-weight:600;letter-spacing:0.3px">👁 Vision</span>');
+    caps.push('<span class="cap-badge vision" title="Image input">' + ICON.vision + 'Vision</span>');
   }
 
-  // Reasoning (extended thinking — verified via reasoning_tokens in usage)
-  // Almost all modern models support reasoning_effort param. gpt-4.1 rejects it.
-  if (m.indexOf('o3') >= 0 || m.indexOf('o4') >= 0 ||
-      m.indexOf('grok-4') >= 0 ||
+  // Reasoning (extended thinking)
+  if (isGrokGeneral ||
+      m.indexOf('o3') >= 0 || m.indexOf('o4') >= 0 ||
       m.indexOf('-reasoning') >= 0 || m.indexOf('deepseek') >= 0 ||
       m.indexOf('claude-opus') >= 0 || m.indexOf('kimi') >= 0 ||
       m.indexOf('gpt-5') >= 0 || m.indexOf('glm-5') >= 0 ||
       m.indexOf('gemini-3') >= 0) {
-    caps.push('<span title="Chain-of-thought reasoning (reasoning_effort param)" style="padding:2px 6px;border-radius:8px;font-size:10px;background:rgba(171,71,188,0.14);color:#ab47bc;font-weight:600;letter-spacing:0.3px">🧠 Reasoning</span>');
+    caps.push('<span class="cap-badge reasoning" title="Chain-of-thought reasoning (reasoning_effort param)">' + ICON.reasoning + 'Reasoning</span>');
   }
 
   // Code (specialized coding models)
-  if (m.indexOf('codex') >= 0 || m.indexOf('code') >= 0 ||
-      m.indexOf('grok-code') >= 0 || m.indexOf('kimi') >= 0) {
-    caps.push('<span title="Code generation" style="padding:2px 6px;border-radius:8px;font-size:10px;background:rgba(129,199,132,0.14);color:#81c784;font-weight:600;letter-spacing:0.3px">💻 Code</span>');
+  if (m.indexOf('codex') >= 0 || m.indexOf('grok-code') >= 0 || m.indexOf('kimi') >= 0 ||
+      m.indexOf('codestral') >= 0 || m.indexOf('qwen-coder') >= 0 || m.indexOf('qwen2.5-coder') >= 0) {
+    caps.push('<span class="cap-badge code" title="Code generation">' + ICON.code + 'Code</span>');
   }
 
   // Fast (low-latency / cheap)
   if (m.indexOf('flash') >= 0 || m.indexOf('fast') >= 0 ||
       m.indexOf('haiku') >= 0 || m.indexOf('mini') >= 0 ||
       m.indexOf('flash-lite') >= 0) {
-    caps.push('<span title="Low latency" style="padding:2px 6px;border-radius:8px;font-size:10px;background:rgba(255,183,77,0.14);color:#ffb74d;font-weight:600;letter-spacing:0.3px">⚡ Fast</span>');
+    caps.push('<span class="cap-badge fast" title="Low latency">' + ICON.fast + 'Fast</span>');
   }
 
   // Long-context (1M+ tokens)
   if (m.indexOf('1m') >= 0 || m.indexOf('2.5-pro') >= 0 ||
       m.indexOf('3.1-pro') >= 0 || m.indexOf('3.0-pro') >= 0) {
-    caps.push('<span title="1M+ token context" style="padding:2px 6px;border-radius:8px;font-size:10px;background:rgba(255,138,101,0.14);color:#ff8a65;font-weight:600;letter-spacing:0.3px">📝 Long-ctx</span>');
+    caps.push('<span class="cap-badge longctx" title="1M+ token context">' + ICON.longctx + 'Long-ctx</span>');
   }
 
   // Grok reasoning_effort aliases
   if (m.indexOf('grok-4.5-') >= 0 && m.indexOf('none') < 0) {
-    caps.push('<span title="Tunable reasoning_effort" style="padding:2px 6px;border-radius:8px;font-size:10px;background:rgba(129,199,132,0.14);color:#81c784;font-weight:600;letter-spacing:0.3px">🎚 Effort</span>');
+    caps.push('<span class="cap-badge effort" title="Tunable reasoning_effort">' + ICON.effort + 'Effort</span>');
   }
 
-  return caps.length ? caps.join(' ') : '<span style="color:var(--text-tertiary);font-size:11px">—</span>';
+  // Cloudflare Workers AI models (@cf/...)
+  if (m.indexOf('@cf/') >= 0) {
+    if (m.indexOf('flux') >= 0 || m.indexOf('stable-diffusion') >= 0 || m.indexOf('image') >= 0 || m.indexOf('sd-') >= 0) {
+      caps.push('<span class="cap-badge image" title="Image generation">' + ICON.image + 'Image</span>');
+    }
+    if (m.indexOf('vision') >= 0 || m.indexOf('llama-4') >= 0 || m.indexOf('llama-4-scout') >= 0 || m.indexOf('llava') >= 0 || m.indexOf('minicpm') >= 0 || m.indexOf('qwen2.5-vl') >= 0 || m.indexOf('qwen-vl') >= 0) {
+      caps.push('<span class="cap-badge vision" title="Image input">' + ICON.vision + 'Vision</span>');
+    }
+    if (m.indexOf('whisper') >= 0 || m.indexOf('tts') >= 0 || m.indexOf('speech') >= 0 || m.indexOf('cartesia') >= 0 || m.indexOf('dia-') >= 0) {
+      caps.push('<span class="cap-badge audio" title="Audio (TTS / speech / transcription)">' + ICON.audio + 'Audio</span>');
+    }
+    if (m.indexOf('embedding') >= 0 || m.indexOf('bge-') >= 0 || m.indexOf('e5-') >= 0 || m.indexOf('snowflake') >= 0) {
+      caps.push('<span class="cap-badge embed" title="Embeddings">' + ICON.embed + 'Embed</span>');
+    }
+    if (m.indexOf('deepseek-r1') >= 0 || m.indexOf('deepseek') >= 0 || m.indexOf('qwq') >= 0) {
+      caps.push('<span class="cap-badge reasoning" title="Chain-of-thought reasoning">' + ICON.reasoning + 'Reasoning</span>');
+    }
+    if (m.indexOf('qwen-coder') >= 0 || m.indexOf('qwen2.5-coder') >= 0 || m.indexOf('codestral') >= 0 || m.indexOf('code') >= 0) {
+      caps.push('<span class="cap-badge code" title="Code generation">' + ICON.code + 'Code</span>');
+    }
+    if ((m.indexOf('mini') >= 0 || m.indexOf('0.5b') >= 0 || m.indexOf('1.5b') >= 0 || m.indexOf('3b') >= 0 || m.indexOf('8b') >= 0) && m.indexOf('fp8') < 0 && m.indexOf('awq') < 0) {
+      if (caps.indexOf('fast') < 0) caps.push('<span class="cap-badge fast" title="Low latency / small">' + ICON.fast + 'Fast</span>');
+    }
+    if (caps.length === 0) {
+      caps.push('<span class="cap-badge code" title="Text generation" style="background:rgba(129,199,132,0.10);color:#a5d6a7">' + ICON.text + 'Text</span>');
+    }
+  }
+
+  return caps.length ? caps.join('') : '<span class="cap-none">—</span>';
 }
 
 async function loadModels() {
@@ -2839,32 +3141,46 @@ async function loadModels() {
     });
 
     var html = '';
-    var ownerLabels = { xai: 'Grok (xAI)', codebuddy: 'CodeBuddy' };
+    var ownerLabels = { xai: 'Grok (xAI)', codebuddy: 'CodeBuddy', cloudflare: 'Cloudflare Workers AI' };
 
     for (var owner in groups) {
       if (!groups.hasOwnProperty(owner)) continue;
       var models = groups[owner];
       html += '<div style="margin-bottom:24px">';
       html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);margin-bottom:8px;font-weight:600">' + escHtml(ownerLabels[owner] || owner) + '</div>';
-      html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
-      html += '<thead><tr style="border-bottom:1px solid var(--border-strong)">' +
-        '<th style="text-align:left;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Model</th>' +
-        '<th style="text-align:left;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Type</th>' +
-        '<th style="text-align:left;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Capabilities</th>' +
-        '<th style="text-align:right;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Requests</th>' +
-        '<th style="text-align:right;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Tokens In</th>' +
-        '<th style="text-align:right;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Tokens Out</th>' +
-        '<th style="text-align:right;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Avg Latency</th>' +
-        '<th style="text-align:right;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Errors</th>' +
-        '<th style="text-align:center;padding:8px 10px;color:var(--text-tertiary);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Test</th>' +
+      html += '<table class="mtbl">';
+      html += '<thead><tr>' +
+        '<th>Model</th>' +
+        '<th>Type</th>' +
+        '<th>Capabilities</th>' +
+        '<th class="num">Requests</th>' +
+        '<th class="num">Tokens In</th>' +
+        '<th class="num">Tokens Out</th>' +
+        '<th class="num">Avg Latency</th>' +
+        '<th class="num">Errors</th>' +
+        '<th class="ctr">Test</th>' +
         '</tr></thead><tbody>';
 
       models.forEach(function(m) {
         var id = m.id;
-        var isAlias = aliasMap[id] !== undefined;
-        var typeLabel = isAlias
-          ? '<span style="padding:2px 8px;border-radius:10px;font-size:11px;background:rgba(94,106,210,0.12);color:var(--brand)">alias → ' + aliasMap[id].upstream + ' (' + aliasMap[id].effort + ')</span>'
-          : '<span style="padding:2px 8px;border-radius:10px;font-size:11px;background:rgba(255,255,255,0.04);color:var(--text-tertiary)">direct</span>';
+        var alias = aliasMap[id];
+        var typeLabel;
+        if (alias) {
+          var ev = alias.effort;
+          var evText = ev === 'none' ? 'no reasoning' :
+            (ev === 'auto' ? 'auto effort' : 'effort: ' + ev);
+          typeLabel = '<span class="type-badge alias" title="Grok reasoning_effort preset"><svg class="icn" viewBox="0 0 24 24"><path d="M3 12h4l3-9 6 18 3-9h4"/></svg>' + evText + '</span>';
+        } else if (id.indexOf('combo/') === 0) {
+          typeLabel = '<span class="type-badge combo">combo</span>';
+        } else if (m.owned_by === 'xai') {
+          typeLabel = '<span class="type-badge direct">grok</span>';
+        } else if (m.owned_by === 'codebuddy') {
+          typeLabel = '<span class="type-badge direct">codebuddy</span>';
+        } else if (m.owned_by === 'cloudflare') {
+          typeLabel = '<span class="type-badge direct">cloudflare</span>';
+        } else {
+          typeLabel = '<span class="type-badge direct">' + escHtml(m.owned_by || 'direct') + '</span>';
+        }
 
         var u = usageMap[id] || {};
         var reqs = u.total_requests || 0;
@@ -2874,16 +3190,16 @@ async function loadModels() {
         var errs = u.total_errors || 0;
         var errStyle = errs > 0 ? 'color:var(--red)' : 'color:var(--text-tertiary)';
 
-        html += '<tr style="border-bottom:1px solid var(--border)">' +
-          '<td style="padding:10px;font-family:var(--mono);font-size:12px;color:var(--text-primary)">' + escHtml(id) + '</td>' +
-          '<td style="padding:10px">' + typeLabel + '</td>' +
-          '<td style="padding:10px">' + modelCaps(id) + '</td>' +
-          '<td style="padding:10px;text-align:right;font-family:var(--mono);color:var(--text-secondary)">' + (reqs > 0 ? formatNum(reqs) : '—') + '</td>' +
-          '<td style="padding:10px;text-align:right;font-family:var(--mono);color:var(--text-secondary)">' + (tokIn > 0 ? formatNum(tokIn) : '—') + '</td>' +
-          '<td style="padding:10px;text-align:right;font-family:var(--mono);color:var(--text-secondary)">' + (tokOut > 0 ? formatNum(tokOut) : '—') + '</td>' +
-          '<td style="padding:10px;text-align:right;font-family:var(--mono);color:var(--text-tertiary)">' + avgLat + '</td>' +
-          '<td style="padding:10px;text-align:right;font-family:var(--mono);' + errStyle + '">' + (errs > 0 ? errs : '—') + '</td>' +
-          '<td style="padding:10px;text-align:center"><button class="btn-ghost quick-test-btn" data-model="' + escHtml(id) + '" style="padding:3px 10px;font-size:12px">Test</button></td>' +
+        html += '<tr>' +
+          '<td class="mono">' + escHtml(id) + '</td>' +
+          '<td>' + typeLabel + '</td>' +
+          '<td>' + modelCaps(id) + '</td>' +
+          '<td class="num">' + (reqs > 0 ? formatNum(reqs) : '—') + '</td>' +
+          '<td class="num">' + (tokIn > 0 ? formatNum(tokIn) : '—') + '</td>' +
+          '<td class="num">' + (tokOut > 0 ? formatNum(tokOut) : '—') + '</td>' +
+          '<td class="num">' + avgLat + '</td>' +
+          '<td class="num ' + (errs > 0 ? 'err-cell' : '') + '">' + (errs > 0 ? errs : '—') + '</td>' +
+          '<td class="ctr"><button class="btn-ghost quick-test-btn" data-model="' + escHtml(id) + '">Test</button></td>' +
         '</tr>';
       });
 
@@ -3223,14 +3539,32 @@ function cleanupBanned(type) {
 function loadCF() {
   fetchJSON('/cf-stats').then(function(data) {
     var rows = (data.cloudflare_accounts || []);
-    var body = document.getElementById('cfBody');
-    if (!body) return;
-    body.innerHTML = '';
-    if (rows.length === 0) {
-      body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-tertiary);padding:24px">No Cloudflare accounts. Use "+ Add Account" or "Bulk Import".</td></tr>';
-      return;
-    }
-    rows.forEach(function(a) {
+    window._allCF = rows;
+    window._cfPage = window._cfPage || 1;
+    window._cfPageSize = window._cfPageSize || 50;
+    renderCFPage();
+  }).catch(function(e) {
+    console.warn('loadCF failed', e);
+  });
+}
+
+function renderCFPage() {
+  var all = window._allCF || [];
+  var body = document.getElementById('cfBody');
+  if (!body) return;
+  var size = window._cfPageSize || 50;
+  var page = window._cfPage || 1;
+  var totalPages = Math.max(1, Math.ceil(all.length / size));
+  if (page > totalPages) page = totalPages;
+  var start = (page - 1) * size;
+  var end = Math.min(start + size, all.length);
+  var pageRows = all.slice(start, end);
+
+  body.innerHTML = '';
+  if (all.length === 0) {
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-tertiary);padding:32px">No Cloudflare accounts. Use "+ Add Account" or "Bulk Import".</td></tr>';
+  } else {
+    pageRows.forEach(function(a) {
       var tr = document.createElement('tr');
       var status = a.disabled
         ? '<span class="err">disabled</span>'
@@ -3249,9 +3583,39 @@ function loadCF() {
         '<td><button class="btn-ghost" onclick="deleteCFAccount(\'' + encodeURIComponent(a.account_id) + '\')" style="padding:3px 8px;font-size:11px;color:var(--danger)">Delete</button></td>';
       body.appendChild(tr);
     });
-  }).catch(function(e) {
-    console.warn('loadCF failed', e);
+  }
+
+  // Pager
+  var pager = document.getElementById('cfPager');
+  if (!pager) return;
+  var html = '<div class="pager">';
+  html += '<span class="pg-label">Show</span>';
+  html += '<select onchange="window._cfPageSize=parseInt(this.value);window._cfPage=1;renderCFPage()">';
+  [25, 50, 100, 200].forEach(function(n) {
+    html += '<option value="' + n + '"' + (size === n ? ' selected' : '') + '>' + n + '</option>';
   });
+  html += '</select>';
+  html += '<button class="pg-btn" onclick="if(window._cfPage>1){window._cfPage--;renderCFPage()}"' + (page <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
+  var maxButtons = 7;
+  var fromPg = Math.max(1, page - Math.floor(maxButtons / 2));
+  var toPg = Math.min(totalPages, fromPg + maxButtons - 1);
+  if (toPg - fromPg < maxButtons - 1) fromPg = Math.max(1, toPg - maxButtons + 1);
+  if (fromPg > 1) {
+    html += '<button class="pg-num" onclick="window._cfPage=1;renderCFPage()">1</button>';
+    if (fromPg > 2) html += '<span class="pg-ellipsis">…</span>';
+  }
+  for (var p = fromPg; p <= toPg; p++) {
+    if (p === page) html += '<button class="pg-num pg-active">' + p + '</button>';
+    else html += '<button class="pg-num" onclick="window._cfPage=' + p + ';renderCFPage()">' + p + '</button>';
+  }
+  if (toPg < totalPages) {
+    if (toPg < totalPages - 1) html += '<span class="pg-ellipsis">…</span>';
+    html += '<button class="pg-num" onclick="window._cfPage=' + totalPages + ';renderCFPage()">' + totalPages + '</button>';
+  }
+  html += '<button class="pg-btn" onclick="if(window._cfPage<totalPages){window._cfPage++;renderCFPage()}"' + (page >= totalPages ? ' disabled' : '') + '>Next ›</button>';
+  html += '<span class="pg-info">' + (start + 1) + '–' + end + ' of ' + all.length + '</span>';
+  html += '</div>';
+  pager.innerHTML = html;
 }
 
 function showAddCFModal() {
@@ -3921,9 +4285,11 @@ async function loadCombos() {
       var strategy = c.strategy || 'fallback';
       var models = Array.isArray(c.models) ? c.models : [];
       var desc = c.description || '';
-      var strategyBadge = strategy === 'round_robin'
-        ? '<span style="padding:2px 8px;border-radius:10px;background:rgba(90,200,120,0.15);color:var(--emerald);font-size:11px">Round Robin</span>'
-        : '<span style="padding:2px 8px;border-radius:10px;background:rgba(100,150,255,0.15);color:var(--brand);font-size:11px">Fallback</span>';
+      var strategyBadge;
+      if (strategy === 'round_robin') strategyBadge = '<span class="strat-badge strat-rr">Round Robin</span>';
+      else if (strategy === 'latency') strategyBadge = '<span class="strat-badge strat-lat">Latency</span>';
+      else if (strategy === 'cost') strategyBadge = '<span class="strat-badge strat-cost">Cost</span>';
+      else strategyBadge = '<span class="strat-badge strat-fb">Fallback</span>';
       var modelsHtml = models.map(function(m) {
         return '<code style="font-family:var(--mono);font-size:11px;padding:1px 6px;background:var(--bg);border-radius:3px;margin-right:4px;display:inline-block;margin-bottom:2px">' + escHtml(m) + '</code>';
       }).join('');

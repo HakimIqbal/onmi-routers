@@ -138,23 +138,19 @@ func markProxyResult(proxyID string, err error, statusCode int) {
 // Package-level configuration + HTTP clients (moved from main package).
 // ---------------------------------------------------------------------------
 
-const (
+// All upstream configuration values are vars (not const) so hermetic unit
+// tests can repoint XAI_TOKEN_URL / CF_UPSTREAM_URL at a local
+// httptest server without touching the network (auth.x.ai / api.cloudflare.com).
+var (
 	XAI_CLIENT_ID    = "b1a00492-073a-47ea-816f-4c329264a828"
-	XAI_TOKEN_URL    = "https://auth.x.ai/oauth2/token"
 	XAI_UPSTREAM_URL = "https://cli-chat-proxy.grok.com/v1"
 	CB_UPSTREAM_URL  = "https://www.codebuddy.ai/v2/chat/completions"
 
-	// Cloudflare (cf/*) — Workers AI ai/run endpoint per account.
-	// CF_UPSTREAM_URL is the base; the full URL is built per-request as
-	// {CF_UPSTREAM_URL}/accounts/{accountID}/ai/run/{model}.
-	CF_UPSTREAM_URL = "https://api.cloudflare.com/client/v4"
-
-	// CF rate-limit handling (see README "Rotating accounts"):
-	//   429 + Retry-After header  → burst cooldown, retry other accounts.
-	//   429 without Retry-After   → daily-quota exhausted, skip until midnight.
+	XAI_TOKEN_URL    = "https://auth.x.ai/oauth2/token"
+	CF_UPSTREAM_URL  = "https://api.cloudflare.com/client/v4"
 	CF_COOLDOWN_DURATION = 10 * time.Minute // rate-limit burst cooldown
 	CF_REENABLE_TICK     = 1 * time.Minute   // midnight reset + cooldown lift ticker
-	// CB_OAUTH_REFRESH_URL is the verified CodeBuddy OAuth refresh endpoint
+
 	// (plugin path — /v2/auth/token/refresh returns 404).
 	CB_OAUTH_REFRESH_URL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
 	REFRESH_BUFFER       = 10 * time.Minute
@@ -192,7 +188,7 @@ const (
 
 	// MAX_REQUEST_BODY caps incoming request bodies — kept here (upstream is
 	// the primary consumer via chat/completions handler).
-	MAX_REQUEST_BODY = 10 * 1024 * 1024 // 10MB
+	MAX_REQUEST_BODY int64 = 10 * 1024 * 1024 // 10MB
 )
 
 // upstreamClient: for Grok + CB API calls (long timeout, connection pool).

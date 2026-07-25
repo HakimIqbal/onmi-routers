@@ -2,29 +2,28 @@
 // name ("combo/<name>") with a routing strategy applied per request. Backed
 // by Redis (see internal/db) and cached in memory behind a sync.RWMutex.
 //
-// Two strategies:
+// Strategies (OmniRoute-style routing):
 //
-//   fallback     Try models in order — models[0] first; on upstream failure
-//                the proxy caller walks NextInFallback until either one
-//                succeeds or the list is exhausted. Resolve() returns the
-//                head of the list.
+//	fallback     Try models in order — models[0] first; on upstream failure
+//	             the proxy caller walks NextInFallback until one succeeds.
+//	round_robin  Rotate models across requests (atomic Redis INCR).
+//	latency      Pick the model whose upstream has the LOWEST avg latency.
+//	cost         Pick the model with the LOWEST estimated USD cost per request.
 //
-//   round_robin  Rotate models across requests. Resolve() calls
-//                IncrComboCounter and picks models[counter % len(Models)].
-//                Atomic INCR gives cluster-safe fairness even under
-//                concurrent traffic.
-//
-// Combos are addressed as "combo/<name>" — the proxy strips the prefix,
-// looks up the combo, and rewrites the outgoing model field before default
-// routing. See proxy.ProxyRequest for the wiring.
+// Self-healer: models whose upstream circuit is OPEN are skipped for
+// latency/cost/round_robin selection (mirrors OmniRoute's selfHealer which
+// prunes unhealthy models out of combos at request time).
 package proxy
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
+	"foxrouters/internal/cost"
 	"foxrouters/internal/db"
+	"foxrouters/internal/upstream"
 )
 
 // Combo is re-exported from internal/db for callers that only import proxy.
@@ -35,14 +34,17 @@ type ComboRegistry struct {
 	mu     sync.RWMutex
 	combos map[string]Combo
 	store  *db.Store
+	hc     *upstream.HealthChecker // optional: enables latency/cost/self-heal routing
 }
 
 // NewComboRegistry builds an empty registry bound to the given DB store.
-// Call Load() before serving requests.
-func NewComboRegistry(store *db.Store) *ComboRegistry {
+// Call Load() before serving requests. Pass hc (may be nil) to enable
+// latency-based / cost-based routing and the self-healer.
+func NewComboRegistry(store *db.Store, hc *upstream.HealthChecker) *ComboRegistry {
 	return &ComboRegistry{
 		combos: map[string]Combo{},
 		store:  store,
+		hc:     hc,
 	}
 }
 
@@ -114,11 +116,105 @@ func (r *ComboRegistry) Resolve(model string) (string, bool) {
 			idx += len(c.Models)
 		}
 		return c.Models[idx], true
+	case "latency", "cost":
+		// OmniRoute-style smart routing. Self-heal: skip models whose
+		// upstream circuit is OPEN.
+		return r.resolveSmart(c, c.Strategy)
 	default:
 		// "fallback" (also the default) — return head; caller can call
 		// NextInFallback on upstream error.
 		return c.Models[0], true
 	}
+}
+
+// resolveSmart picks the best model for latency/cost strategies, skipping
+// models whose upstream circuit is OPEN (self-healer). When hc is nil or no
+// models are healthy, it falls back to the first model (so requests still
+// flow rather than erroring).
+func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
+	healthy := make([]string, 0, len(c.Models))
+	for _, m := range c.Models {
+		if r.hc != nil && r.upstreamOpen(m) {
+			slog.Debug("combo self-heal: skipping OPEN upstream model",
+				"module", "combo", "combo", c.Name, "model", m, "strategy", strategy)
+			continue
+		}
+		healthy = append(healthy, m)
+	}
+	if len(healthy) == 0 {
+		// All unhealthy — degrade gracefully to first model.
+		return c.Models[0], true
+	}
+	best := healthy[0]
+	var bestScore float64
+	switch strategy {
+	case "latency":
+		bestScore = r.avgLatencyMs(best)
+		for _, m := range healthy[1:] {
+			if s := r.avgLatencyMs(m); s < bestScore {
+				bestScore = s
+				best = m
+			}
+		}
+	case "cost":
+		bestScore = cost.USD(best, 1_000_000, 1_000_000) // 1M/1M baseline for ranking
+		for _, m := range healthy[1:] {
+			if s := cost.USD(m, 1_000_000, 1_000_000); s < bestScore {
+				bestScore = s
+				best = m
+			}
+		}
+	}
+	return best, true
+}
+
+// upstreamOpen reports whether the upstream that would serve model m has an
+// OPEN circuit breaker. Conservative: unknown upstream → false (allowed).
+func (r *ComboRegistry) upstreamOpen(model string) bool {
+	if r.hc == nil {
+		return false
+	}
+	var h *upstream.UpstreamHealth
+	switch {
+	case strings.HasPrefix(model, "@cf/"), strings.Contains(model, "cloudflare"):
+		h = r.hc.CF
+	case strings.HasPrefix(model, "cb/"), strings.Contains(model, "codebuddy"):
+		h = r.hc.CB
+	case strings.HasPrefix(model, "grok"):
+		h = r.hc.Grok
+	default:
+		return false
+	}
+	if h == nil {
+		return false
+	}
+	return h.State() == upstream.CircuitOpen
+}
+
+// avgLatencyMs returns the live avg latency (ms) for the upstream serving m.
+func (r *ComboRegistry) avgLatencyMs(model string) float64 {
+	if r.hc == nil {
+		return 0
+	}
+	var h *upstream.UpstreamHealth
+	switch {
+	case strings.HasPrefix(model, "@cf/"), strings.Contains(model, "cloudflare"):
+		h = r.hc.CF
+	case strings.HasPrefix(model, "cb/"), strings.Contains(model, "codebuddy"):
+		h = r.hc.CB
+	case strings.HasPrefix(model, "grok"):
+		h = r.hc.Grok
+	default:
+		return 0
+	}
+	if h == nil {
+		return 0
+	}
+	st := h.Stats()
+	if v, ok := st["avg_latency_ms"].(float64); ok {
+		return v
+	}
+	return 0
 }
 
 // fallbackCounter is a per-process monotonic sequence used only when Redis
@@ -202,9 +298,9 @@ func (r *ComboRegistry) AddCombo(c Combo) error {
 	switch c.Strategy {
 	case "":
 		c.Strategy = "fallback"
-	case "fallback", "round_robin":
+	case "fallback", "round_robin", "latency", "cost":
 	default:
-		return fmt.Errorf("strategy must be 'fallback' or 'round_robin'")
+		return fmt.Errorf("strategy must be 'fallback', 'round_robin', 'latency', or 'cost'")
 	}
 	// Trim + drop empty model entries.
 	cleaned := make([]string, 0, len(c.Models))
@@ -254,4 +350,41 @@ func (r *ComboRegistry) DeleteCombo(name string) error {
 	delete(r.combos, name)
 	r.mu.Unlock()
 	return nil
+}
+
+// Heal is the self-healer worker. For every combo it logs (does NOT mutate
+// persistence) which models are currently skipped because their upstream
+// circuit is OPEN. This mirrors OmniRoute's selfHealer: unhealthy models are
+// removed from the live routing decision (see upstreamOpen in Resolve) while
+// still kept in the saved combo config, so they re-enter automatically once
+// the upstream recovers. Call on a ticker (e.g. every 30s).
+func (r *ComboRegistry) Heal() {
+	if r == nil || r.hc == nil {
+		return
+	}
+	r.mu.RLock()
+	names := make([]string, 0, len(r.combos))
+	for n := range r.combos {
+		names = append(names, n)
+	}
+	r.mu.RUnlock()
+	for _, n := range names {
+		r.mu.RLock()
+		c, ok := r.combos[n]
+		r.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		skipped := 0
+		for _, m := range c.Models {
+			if r.upstreamOpen(m) {
+				skipped++
+			}
+		}
+		if skipped > 0 {
+			slog.Info("combo self-heal",
+				"module", "combo", "combo", n, "strategy", c.Strategy,
+				"skipped", skipped, "total", len(c.Models))
+		}
+	}
 }

@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-// loginPageHTML returns the login page with FoxRouters branding.
+// loginPageHTML returns the login page with OnmiRouters branding.
 const loginPageHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FoxRouters — Login</title>
+<title>OnmiRouters — Login</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;590;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -84,7 +84,7 @@ body {
       <circle cx="16" cy="19" r="1" fill="rgba(255,255,255,0.9)"/>
     </svg>
   </div>
-  <div class="login-title">FoxRouters</div>
+  <div class="login-title">OnmiRouters</div>
   <div class="login-sub">Gateway Control Panel</div>
   <form method="POST" action="/login">
     <div class="login-field">
@@ -93,7 +93,7 @@ body {
     </div>
     <button class="login-btn" type="submit">Sign In</button>
   </form>
-  <div class="login-footer">FoxRouters v5.11</div>
+  <div class="login-footer">OnmiRouters v5.11</div>
 </div>
 </body>
 </html>`

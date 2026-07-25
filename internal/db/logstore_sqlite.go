@@ -69,6 +69,16 @@ func newSqliteStore() (LogStore, error) {
 		return nil, fmt.Errorf("sqlite ping %s: %w", path, err)
 	}
 
+	// Migration: add cost_usd column if missing (idempotent).
+	if _, err := sdb.ExecContext(ctx, `ALTER TABLE request_logs ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0`); err != nil {
+		// Column already exists (or table not yet created) — non-fatal.
+		slog.Debug("sqlite migration cost_usd", "module", "db-sqlite", "note", "skip (already present or table pending)")
+	}
+	// Migration: add neurons column if missing (Cloudflare billing unit).
+	if _, err := sdb.ExecContext(ctx, `ALTER TABLE request_logs ADD COLUMN neurons REAL NOT NULL DEFAULT 0`); err != nil {
+		slog.Debug("sqlite migration neurons", "module", "db-sqlite", "note", "skip (already present or table pending)")
+	}
+
 	s := &sqliteStore{
 		db:   sdb,
 		path: path,
@@ -92,8 +102,10 @@ func (s *sqliteStore) EnsureSchema(ctx context.Context) error {
 			account_id    TEXT NOT NULL DEFAULT '',
 			status_code   INTEGER NOT NULL DEFAULT 0,
 			latency_ms    INTEGER NOT NULL DEFAULT 0,
-			tokens_in     INTEGER NOT NULL DEFAULT 0,
-			tokens_out    INTEGER NOT NULL DEFAULT 0,
+			tokens_in INTEGER NOT NULL DEFAULT 0,
+			tokens_out INTEGER NOT NULL DEFAULT 0,
+			neurons REAL NOT NULL DEFAULT 0,
+			cost_usd REAL NOT NULL DEFAULT 0,
 			error_msg     TEXT NOT NULL DEFAULT '',
 			input_text    TEXT NOT NULL DEFAULT '',
 			output_text   TEXT NOT NULL DEFAULT '',
@@ -181,9 +193,9 @@ func (s *sqliteStore) InsertRequestBatch(ctx context.Context, batch []RequestLog
 	}()
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO request_logs (
 		timestamp, request_id, client_key, model, upstream, account_id,
-		status_code, latency_ms, tokens_in, tokens_out, error_msg,
+		status_code, latency_ms, tokens_in, tokens_out, neurons, cost_usd, error_msg,
 		input_text, output_text, request_body, response_body
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -204,6 +216,8 @@ func (s *sqliteStore) InsertRequestBatch(ctx context.Context, batch []RequestLog
 			max0(r.LatencyMs),
 			max0(r.TokensIn),
 			max0(r.TokensOut),
+			r.Neurons,
+			r.CostUsd,
 			r.ErrorMsg,
 			r.InputText,
 			r.OutputText,
@@ -288,15 +302,16 @@ func (s *sqliteStore) GetRequestStats(ctx context.Context, since time.Time) (*Re
 			COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0),
 			COALESCE(AVG(latency_ms), 0),
 			COALESCE(SUM(tokens_in), 0),
-			COALESCE(SUM(tokens_out), 0)
+			COALESCE(SUM(tokens_out), 0),
+			COALESCE(SUM(cost_usd), 0)
 		FROM request_logs
 		WHERE timestamp >= ?
 	`, since.UTC())
 
 	stats := &RequestStats{}
 	var total, errors, tin, tout int64
-	var avg float64
-	if err := row.Scan(&total, &errors, &avg, &tin, &tout); err != nil {
+	var avg, cost float64
+	if err := row.Scan(&total, &errors, &avg, &tin, &tout, &cost); err != nil {
 		return nil, err
 	}
 	stats.TotalRequests = int(total)
@@ -305,6 +320,7 @@ func (s *sqliteStore) GetRequestStats(ctx context.Context, since time.Time) (*Re
 	stats.TotalTokensIn = int(tin)
 	stats.TotalTokensOut = int(tout)
 	stats.TotalTokens = int(tin + tout)
+	stats.TotalCostUsd = cost
 	if stats.TotalRequests > 0 {
 		stats.ErrorRate = float64(stats.TotalErrors) / float64(stats.TotalRequests) * 100
 	}
@@ -322,7 +338,8 @@ func (s *sqliteStore) GetModelStats(ctx context.Context, since time.Time, limit 
 			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS total_errors,
 			COALESCE(AVG(latency_ms), 0) AS avg_latency,
 			COALESCE(SUM(tokens_in), 0) AS tokens_in,
-			COALESCE(SUM(tokens_out), 0) AS tokens_out
+			COALESCE(SUM(tokens_out), 0) AS tokens_out,
+			COALESCE(SUM(cost_usd), 0) AS cost_usd
 		FROM request_logs
 		WHERE timestamp >= ?
 		GROUP BY model
@@ -337,8 +354,8 @@ func (s *sqliteStore) GetModelStats(ctx context.Context, since time.Time, limit 
 	for rows.Next() {
 		var m ModelStats
 		var tr, te, tin, tout int64
-		var avg float64
-		if err := rows.Scan(&m.Model, &tr, &te, &avg, &tin, &tout); err != nil {
+		var avg, cost float64
+		if err := rows.Scan(&m.Model, &tr, &te, &avg, &tin, &tout, &cost); err != nil {
 			continue
 		}
 		m.TotalRequests = int(tr)
@@ -347,6 +364,7 @@ func (s *sqliteStore) GetModelStats(ctx context.Context, since time.Time, limit 
 		m.TotalTokensIn = int(tin)
 		m.TotalTokensOut = int(tout)
 		m.TotalTokens = int(tin + tout)
+		m.TotalCostUsd = cost
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {

@@ -720,8 +720,15 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
-			// 4xx besides 401/403/429 = bad request (model not found etc).
-			// Don't permanently disable — it's a request error, not a key error.
+			// 404 NotFound ("model does not exist") is a model/plan issue,
+			// NOT a key-health problem — never disable the key for it. Just
+			// skip this key and let the request fail or fall to the next.
+			if resp.StatusCode == 404 && bytes.Contains(bodyBytes, []byte("NotFoundError")) {
+				slog.Debug("cf 404 model not found (skip, no disable)", "module", "cf", "account", key.AccountID, "body", truncateLog(string(bodyBytes), 120))
+				continue
+			}
+			// Other 4xx (400/401/403/429) = bad request / auth / quota.
+			// Cooldown-disable so we don't hammer a broken key.
 			cooldownDisableCF(key, fmt.Sprintf("4xx status=%d body=%s", resp.StatusCode, truncateLog(string(bodyBytes), 200)))
 			continue
 		}
@@ -839,6 +846,18 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 				if content, ok := msg["content"].(string); ok {
 					c.Set("output_text", truncateLog(content, 1000))
 				}
+			}
+		}
+		// Propagate token usage so cost tracking + per-key quota work.
+		if usage, ok := result["usage"].(map[string]any); ok {
+			if pt, ok := usage["prompt_tokens"].(float64); ok {
+				c.Set("tokens_in", int64(pt))
+			}
+			if ct, ok := usage["completion_tokens"].(float64); ok {
+				c.Set("tokens_out", int64(ct))
+			}
+			if nr, ok := usage["neurons"].(float64); ok {
+				c.Set("neurons", nr)
 			}
 		}
 	}

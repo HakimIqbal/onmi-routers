@@ -27,6 +27,14 @@ const (
 	CircuitOpen     = upstream.CircuitOpen
 	CircuitHalfOpen = upstream.CircuitHalfOpen
 
+	// CodeBuddy credential types (const in upstream)
+	CBAuthAPIKey = upstream.CBAuthAPIKey
+	CBAuthOAuth  = upstream.CBAuthOAuth
+)
+
+// The following mirror upstream VARS (not const) so hermetic tests can
+// repoint endpoints without recompiling upstream.
+var (
 	CB_CREDIT_LIMIT  = upstream.CB_CREDIT_LIMIT
 	MAX_REQUEST_BODY = upstream.MAX_REQUEST_BODY
 
@@ -37,10 +45,6 @@ const (
 	// Grok/CB endpoint constants (referenced by tests + docs)
 	XAI_UPSTREAM_URL = upstream.XAI_UPSTREAM_URL
 	CB_UPSTREAM_URL  = upstream.CB_UPSTREAM_URL
-
-	// CodeBuddy credential types
-	CBAuthAPIKey = upstream.CBAuthAPIKey
-	CBAuthOAuth  = upstream.CBAuthOAuth
 )
 
 // Function/worker re-exports

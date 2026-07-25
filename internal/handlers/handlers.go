@@ -560,6 +560,7 @@ func HandleHistory(store *db.Store) gin.HandlerFunc {
 			"total_tokens_in":  stats.TotalTokensIn,
 			"total_tokens_out": stats.TotalTokensOut,
 			"total_tokens":     stats.TotalTokens,
+			"total_cost_usd":   stats.TotalCostUsd,
 			"by_model":         modelStats,
 		})
 	}

@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 
 	"foxrouters/internal/db"
 	"foxrouters/internal/proxy"
+	"foxrouters/internal/upstream"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +16,7 @@ import (
 // TestResolveComboFallback: combo/<name> with fallback strategy returns
 // models[0]. NextInFallback walks the chain on failure.
 func TestResolveComboFallback(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	if err := reg.AddCombo(db.Combo{
 		Name:     "smart-fallback",
 		Strategy: "fallback",
@@ -35,7 +37,7 @@ func TestResolveComboFallback(t *testing.T) {
 // models list. With a nil store the registry falls back to an in-process
 // counter which is still deterministic per-key.
 func TestResolveComboRoundRobin(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	if err := reg.AddCombo(db.Combo{
 		Name:     "rr-test-uniq",
 		Strategy: "round_robin",
@@ -60,7 +62,7 @@ func TestResolveComboRoundRobin(t *testing.T) {
 // TestNextInFallback: NextInFallback returns the entry after failedModel,
 // or empty when the failure was on the last entry.
 func TestNextInFallback(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	_ = reg.AddCombo(db.Combo{
 		Name:     "chain",
 		Strategy: "fallback",
@@ -83,7 +85,7 @@ func TestNextInFallback(t *testing.T) {
 
 // TestListCombos: added combos appear in ListCombos.
 func TestListCombos(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	_ = reg.AddCombo(db.Combo{Name: "a", Strategy: "fallback", Models: []string{"x"}})
 	_ = reg.AddCombo(db.Combo{Name: "b", Strategy: "round_robin", Models: []string{"y", "z"}})
 
@@ -102,7 +104,7 @@ func TestListCombos(t *testing.T) {
 
 // TestAddDeleteCombo: CRUD round-trip.
 func TestAddDeleteCombo(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	if err := reg.AddCombo(db.Combo{
 		Name:     "crud",
 		Strategy: "fallback",
@@ -126,7 +128,7 @@ func TestAddDeleteCombo(t *testing.T) {
 
 // TestResolveNotCombo: non-combo models fall through unchanged (isCombo=false).
 func TestResolveNotCombo(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	_ = reg.AddCombo(db.Combo{Name: "x", Strategy: "fallback", Models: []string{"cb/gpt-5.5"}})
 
 	if _, ok := reg.Resolve("cb/gpt-5.5"); ok {
@@ -144,7 +146,7 @@ func TestResolveNotCombo(t *testing.T) {
 // TestComboInModelsList: /v1/models includes combos as "combo/<name>".
 func TestComboInModelsList(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	comboReg := proxy.NewComboRegistry(nil)
+	comboReg := proxy.NewComboRegistry(nil, nil)
 	_ = comboReg.AddCombo(db.Combo{
 		Name:        "shown-in-list",
 		Strategy:    "fallback",
@@ -187,7 +189,7 @@ func TestComboInModelsList(t *testing.T) {
 
 // TestAddComboValidation: bad inputs are rejected.
 func TestAddComboValidation(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	// empty name
 	if err := reg.AddCombo(db.Combo{Strategy: "fallback", Models: []string{"a"}}); err == nil {
 		t.Error("expected error for empty name")
@@ -209,7 +211,7 @@ func TestAddComboValidation(t *testing.T) {
 // TestAddComboDefaults: strategy defaults to "fallback" when empty, models
 // with surrounding whitespace get trimmed.
 func TestAddComboDefaults(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	if err := reg.AddCombo(db.Combo{
 		Name:   "defaults",
 		Models: []string{"  cb/gpt-5.5  ", "", "grok-4.5"},
@@ -231,7 +233,7 @@ func TestAddComboDefaults(t *testing.T) {
 // TestConcurrentComboResolve: concurrent Resolve + Add/Delete stays consistent.
 // Race detector catches map corruption.
 func TestConcurrentComboResolve(t *testing.T) {
-	reg := proxy.NewComboRegistry(nil)
+	reg := proxy.NewComboRegistry(nil, nil)
 	_ = reg.AddCombo(db.Combo{Name: "concur", Strategy: "round_robin", Models: []string{"a", "b", "c"}})
 	done := make(chan struct{})
 	go func() {
@@ -249,4 +251,51 @@ func TestConcurrentComboResolve(t *testing.T) {
 	}()
 	<-done
 	<-done
+}
+
+// TestResolveSmartStrategies: latency/cost pick the best healthy model and
+// self-heal skips OPEN-upstream models. Uses a fake HealthChecker.
+func TestResolveSmartStrategies(t *testing.T) {
+	// Build a HealthChecker with grok CLOSED and cb OPEN.
+	hc := &upstream.HealthChecker{
+		Grok: &upstream.UpstreamHealth{},
+		CB:   &upstream.UpstreamHealth{},
+		CF:   &upstream.UpstreamHealth{},
+	}
+	// Force CB circuit OPEN via repeated error recording (threshold path).
+	for i := 0; i < 10; i++ {
+		hc.CB.RecordRequest(0, fmt.Errorf("simulated outage"))
+	}
+
+	reg := proxy.NewComboRegistry(nil, hc)
+	combo := db.Combo{
+		Name:     "smart",
+		Strategy: "latency",
+		Models:   []string{"cb/gpt-5.5", "grok-4.5"}, // cb is OPEN → must skip
+	}
+	if err := reg.AddCombo(combo); err != nil {
+		t.Fatalf("AddCombo: %v", err)
+	}
+	got, ok := reg.Resolve("combo/smart")
+	if !ok {
+		t.Fatal("expected combo hit")
+	}
+	if got != "grok-4.5" {
+		t.Errorf("self-heal: got %q want grok-4.5 (cb OPEN should be skipped)", got)
+	}
+
+	// cost strategy: picks lowest-cost model among healthy (grok wins vs cb premium)
+	combo.Strategy = "cost"
+	_ = reg.AddCombo(combo)
+	got2, _ := reg.Resolve("combo/smart")
+	if got2 != "grok-4.5" {
+		t.Errorf("cost self-heal: got %q want grok-4.5", got2)
+	}
+
+	// All-OPEN fallback: degrades to first model rather than erroring.
+	allOpen := db.Combo{Name: "ao", Strategy: "latency", Models: []string{"cb/gpt-5.5"}}
+	_ = reg.AddCombo(allOpen)
+	if v, ok := reg.Resolve("combo/ao"); !ok || v != "cb/gpt-5.5" {
+		t.Errorf("all-open should degrade to first model, got %q ok=%v", v, ok)
+	}
 }

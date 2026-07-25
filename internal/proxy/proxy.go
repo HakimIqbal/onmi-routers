@@ -12,18 +12,26 @@ package proxy
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"foxrouters/internal/auth"
+	"foxrouters/internal/cost"
 	"foxrouters/internal/db"
 	"foxrouters/internal/metrics"
 	"foxrouters/internal/upstream"
 
 	"github.com/gin-gonic/gin"
+	"foxrouters/internal/rtk"
 )
+
+// RTKEnabled gates the RTK token saver (tool_result compression).
+// Set RTK_ENABLED=false in the env to disable. Default: on.
+var RTKEnabled = os.Getenv("RTK_ENABLED") != "false"
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -81,6 +89,30 @@ func toInt(v interface{}) int {
 		return int(n)
 	case float64:
 		return int(n)
+	}
+	return 0
+}
+
+// toFloat extracts a numeric value (JSON numbers arrive as float64) into a
+// float64. Returns (0, false) when the value isn't numeric.
+func toFloat(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+// toFloatNeurons extracts the Cloudflare "neurons" billing value into float64.
+func toFloatNeurons(v interface{}) float64 {
+	if f, ok := toFloat(v); ok {
+		return f
 	}
 	return 0
 }
@@ -171,7 +203,7 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				{"id": "cb/kimi-k3", "object": "model", "owned_by": "codebuddy"},
 				// CodeBuddy — Default
 				{"id": "cb/default-model", "object": "model", "owned_by": "codebuddy"},
-				// Cloudflare (cf/*) — Workers AI models
+				// Cloudflare (cf/*) — Workers AI models (expanded catalog)
 				{"id": "cf/llama-70b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "cf/llama-8b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "cf/deepseek-r1", "object": "model", "owned_by": "cloudflare"},
@@ -179,8 +211,37 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				{"id": "cf/qwen-14b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "cf/mistral-7b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.2-1b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.2-3b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.2-11b-vision-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3.1-8b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-8b-instruct-fp8", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-8b-instruct-awq", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.8b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3-8b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3-8b-instruct-awq", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-2-7b-chat-fp16", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-guard-3-8b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/google/gemma-3-12b-it", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/google/gemma-2b-it", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/mistral/mistral-7b-instruct-v0.1", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/mistralai/mistral-small-3.1-24b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/deepseek-ai/deepseek-r1-distill-llama-70b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/qwen/qwq-32b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/qwen/qwen2.5-coder-32b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/qwen/qwen3-30b-a3b-fp8", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/qwen/qwen3-32b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/openai/gpt-oss-120b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-4-scout-17b-16e-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/black-forest-labs/flux-2-dev", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/black-forest-labs/flux-2-klein-9b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/black-forest-labs/flux-2-klein-4b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/moondream/moondream3.1-9B-A2B", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/openai/whisper", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/openai/whisper-large-v3-turbo", "object": "model", "owned_by": "cloudflare"},
 				}
 			// Append runtime-registered custom models.
 			if registry != nil {
@@ -241,6 +302,17 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			model = "grok-4.5"
 			bodyMap["model"] = model
 			body, _ = json.Marshal(bodyMap)
+		}
+
+		// RTK token saver: compress tool_result / function_call_output blobs
+		// in-place before routing. Fail-open — never aborts the request.
+		if RTKEnabled {
+			if stats := rtk.CompressMessages(bodyMap); stats != nil {
+				if log := rtk.FormatLog(stats); log != "" {
+					slog.Info(log)
+				}
+				body, _ = json.Marshal(bodyMap)
+			}
 		}
 
 		// Custom alias + custom model resolution (runtime-configured).
@@ -495,6 +567,7 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			outputText, _ := c.Get("output_text")
 			tokensIn, _ := c.Get("tokens_in")
 			tokensOut, _ := c.Get("tokens_out")
+			neurons, _ := c.Get("neurons")
 			responseBody, _ := c.Get("response_body")
 
 			// Full request/response JSON stored in ClickHouse (ZSTD) — unlimited.
@@ -509,8 +582,16 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				LatencyMs:  int(time.Since(startTime).Milliseconds()),
 				TokensIn:   toInt(tokensIn),
 				TokensOut:  toInt(tokensOut),
+				Neurons:    toFloatNeurons(neurons),
 				InputText:  inputText,
 				OutputText: toString(outputText),
+			}
+			// Estimated USD cost (OmniRoute-style pricing table).
+			// Cloudflare bills per "neuron" (not tokens), so use the neuron rate.
+			if strings.HasPrefix(model, "@cf/") {
+				rl.CostUsd = cost.USDNeurons(rl.Neurons)
+			} else {
+				rl.CostUsd = cost.USD(model, int64(rl.TokensIn), int64(rl.TokensOut))
 			}
 			// Capture error message for non-2xx responses (audit trail)
 			if errMsg, exists := c.Get("error_msg"); exists {

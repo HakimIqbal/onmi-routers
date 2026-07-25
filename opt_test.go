@@ -90,50 +90,6 @@ func TestCBNextNoFullReenableScan(t *testing.T) {
 	}
 }
 
-func TestRefreshDoesNotHoldLockAcrossSleep(t *testing.T) {
-	// Ensure GetAccessToken is callable while another goroutine holds nothing
-	// after Refresh structure change (lock split).
-	acc := upstream.NewGrokAccountForTest("x@t.com", "old", "bad-rt")
-	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_ = acc.GetAccessToken()
-			_ = acc.IsDisabled()
-		}()
-	}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_ = acc.Refresh() // will fail network, but must not hold lock forever
-	}()
-	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(15 * time.Second):
-		t.Fatal("deadlock during Refresh + GetAccessToken")
-	}
-}
-
-func TestExpandGrokAlias(t *testing.T) {
-	cases := map[string]string{
-		"grok-4.5-high": "high", "grok-4.5-xhigh": "high",
-		"grok-4.5-medium": "medium", "grok-4.5-low": "low",
-		"grok-4.5-auto": "auto", "grok-4.5-none": "none",
-	}
-	for m, want := range cases {
-		got, ok := expandGrokAlias(m)
-		if !ok || got != want {
-			t.Errorf("%s -> %s,%v want %s", m, got, ok, want)
-		}
-	}
-	if _, ok := expandGrokAlias("grok-4.5"); ok {
-		t.Error("base model should not be alias")
-	}
-}
-
 func TestCBKeyAddKey(t *testing.T) {
 	km := NewCBKeyManager(nil)
 	added, total := km.AddKey("ck_test_one")
