@@ -576,7 +576,22 @@ body {
 .tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .tbl td.mono.num { text-align: right; }
 
-/* ── Capability badges (uniform height, icon+label) ── */
+/* ── .data-table (feature pages: analytics / console / clitools) ──
+   Mirrors .tbl so new views stay on the same design language. */
+.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.data-table th {
+  text-align: left; padding: 9px 12px; color: var(--text-tertiary);
+  font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border); background: var(--bg-panel);
+  position: sticky; top: 0; z-index: 1;
+}
+.data-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+.data-table tbody tr { transition: background var(--tc); }
+.data-table tbody tr:hover { background: var(--bg-hover); }
+.data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table .muted { color: var(--text-tertiary); }
+
+
 .cap-badge {
   display: inline-flex;
   align-items: center;
@@ -1383,7 +1398,7 @@ body {
               <tbody id="cfBody"></tbody>
             </table>
           </div>
-          <div id="cfPager" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
+          <div id="cfPager" style="display:none;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-tertiary)"></div>
         </div>
       </div>
     </div>
@@ -2015,15 +2030,15 @@ body {
       </div>
       <div style="display:flex;flex-direction:column;gap:14px;margin-top:8px">
         <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
-          <input type="checkbox" id="tsRtk" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--green)">
+          <input type="checkbox" id="tsRtk" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--brand)">
           <div><div style="font-weight:600">RTK Token Saver (input)</div><div style="font-size:12px;color:var(--text-tertiary)">Compresses tool dumps before sending — saves 20-40% input tokens.</div></div>
         </label>
         <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
-          <input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--green)">
+          <input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--brand)">
           <div><div style="font-weight:600">Caveman Mode (output)</div><div style="font-size:12px;color:var(--text-tertiary)">Injects terse-output directive → up to −65% output tokens.</div></div>
         </label>
         <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
-          <input type="checkbox" id="tsPonytail" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--green)">
+          <input type="checkbox" id="tsPonytail" onchange="saveTokenSaver()" style="width:18px;height:18px;accent-color:var(--brand)">
           <div><div style="font-weight:600">Ponytail Mode (output)</div><div style="font-size:12px;color:var(--text-tertiary)">Lazy-senior-dev YAGNI code style → fewer tokens, shorter diffs.</div></div>
         </label>
         <div id="tsStatus" style="font-size:12px;color:var(--green)"></div>
@@ -2066,11 +2081,11 @@ body {
         <h3>Live Server Console</h3>
         <span class="head-meta" id="conStatus">connecting…</span>
         <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-          <input type="checkbox" id="conAutoscroll" checked style="width:14px;height:14px;accent-color:var(--green)"> auto-scroll
+          <input type="checkbox" id="conAutoscroll" checked style="width:14px;height:14px;accent-color:var(--brand)"> auto-scroll
         </label>
         <button class="btn" onclick="clearConsole()">Clear</button>
       </div>
-      <div id="conLog" style="margin-top:8px;background:#05080f;border:1px solid var(--border);border-radius:8px;padding:12px;height:60vh;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+      <div id="conLog" style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;height:60vh;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
     </div>
   </div>
 
@@ -2198,7 +2213,7 @@ var routes = {
   '#/models':   { page: 'page-models',    title: 'Models', meta: 'Usage stats · aliases · custom · combos' },
   '#/proxies':  { page: 'page-proxies',   title: 'Proxies', meta: 'HTTP/SOCKS5 upstream proxy pool · round-robin' },
   '#/tunnel':   { page: 'page-tunnel',    title: 'Tunnel', meta: 'Cloudflare Tunnel · embedded cloudflared · Redis config' },
-  '#/cf':       { page: 'page-cf',        title: 'Cloudflare', meta: 'cf/* upstream · Workers AI accounts · 12k pool' },
+  '#/cf':       { page: 'page-accounts',  title: 'Cloudflare', meta: 'cf/* upstream · Workers AI accounts · 12k pool' },
   '#/tokensaver': { page: 'page-tokensaver', title: 'Token Saver', meta: 'RTK input + Caveman/Ponytail output compression' },
   '#/analytics': { page: 'page-analytics', title: 'Usage & Analytics', meta: 'Requests · tokens · cost · per-model breakdown' },
   '#/console':  { page: 'page-console',   title: 'Live Console', meta: 'Real-time gateway server logs (SSE)' },
@@ -2255,6 +2270,8 @@ function router() {
     if (typeof loadAccounts === 'function') loadAccounts();
   }
   if (hash === '#/cf') {
+    if (typeof loadAccounts === 'function') loadAccounts();
+    if (typeof showTab === 'function') showTab(null, 'cf');
     if (typeof loadCF === 'function') loadCF();
   }
   if (hash === '#/tokensaver') {
@@ -2639,7 +2656,11 @@ function renderCBPage() {
    ══════════════════════════════════════════════════════════ */
 function showTab(e, tab) {
   document.querySelectorAll('.subtab').forEach(function(t) { t.classList.remove('active'); });
-  e.target.classList.add('active');
+  if (e && e.target) e.target.classList.add('active');
+  else {
+    // programmatic call (router) — activate matching subtab button
+    document.querySelectorAll('.subtab[data-tab="' + tab + '"]').forEach(function(t) { t.classList.add('active'); });
+  }
   document.getElementById('cbPanel').style.display = tab === 'cb' ? '' : 'none';
   document.getElementById('grokPanel').style.display = tab === 'grok' ? '' : 'none';
   var cbPagerEl = document.getElementById('cbPager');
