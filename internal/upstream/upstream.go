@@ -300,26 +300,51 @@ func IsCFModel(model string) bool {
 		strings.HasPrefix(model, "qwen-")
 }
 
-// CF_MODEL_ALIASES maps friendly short names to full Workers AI model IDs.
-// Used by ExpandCFAlias so callers can request e.g. "llama-70b" and get the
-// canonical Workers AI model name.
+// CF_MODEL_ALIASES maps friendly short names (with or without "cf/" prefix)
+// to full Workers AI model IDs.
 var CF_MODEL_ALIASES = map[string]string{
-	"llama-70b":    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-	"llama-8b":     "@cf/meta/llama-3.1-8b-instruct",
-	"llama-3.1-8b": "@cf/meta/llama-3.1-8b-instruct",
-	"deepseek-r1":  "@cf/deepseek-ai/deepseek-r1-distill-llama-70b",
-	"deepseek-70b": "@cf/deepseek-ai/deepseek-r1-distill-llama-70b",
-	"qwen-32b":     "@cf/qwen/qwen2.5-32b-instruct",
-	"qwen-14b":     "@cf/qwen/qwen2.5-14b-instruct",
-	"mistral-7b":   "@cf/mistral/mistral-7b-instruct-v0.2",
+	"llama-70b":      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+	"llama-8b":       "@cf/meta/llama-3.1-8b-instruct-fp8-fast",
+	"llama-3.1-8b":   "@cf/meta/llama-3.1-8b-instruct",
+	"deepseek-r1":    "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+	"deepseek-70b":   "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+	"qwen-32b":       "@cf/qwen/qwen2.5-coder-32b-instruct",
+	"qwen-14b":       "@cf/qwen/qwen3-30b-a3b-fp8",
+	"mistral-7b":     "@cf/mistral/mistral-7b-instruct-v0.1",
+	"kimi-k2.5":      "@cf/moonshotai/kimi-k2.5",
+	"kimi-k2.6":      "@cf/moonshotai/kimi-k2.6",
+	"kimi-k2.7-code": "@cf/moonshotai/kimi-k2.7-code",
+	"kimi-k2.7":      "@cf/moonshotai/kimi-k2.7-code",
+	"glm-4.7-flash":  "@cf/zai-org/glm-4.7-flash",
+	"glm-5.2":        "@cf/zai-org/glm-5.2",
+	"gpt-oss-120b":   "@cf/openai/gpt-oss-120b",
+	"gpt-oss-20b":    "@cf/openai/gpt-oss-20b",
+	"llama-4-scout":  "@cf/meta/llama-4-scout-17b-16e-instruct",
+	"gemma-4":        "@cf/google/gemma-4-26b-a4b-it",
+	"nemotron-3":     "@cf/nvidia/nemotron-3-120b-a12b",
 }
 
-// ExpandCFAlias expands a friendly CF alias to its full Workers AI model ID.
-// Returns ("", false) when the model is not a known alias (caller should pass
-// it through unchanged and let the upstream validate it).
+// ExpandCFAlias expands a friendly CF alias (or cf/* shorthand) to the full
+// Workers AI model ID. Accepts:
+//   - already-canonical "@cf/..." / "@hf/..." → returned as-is
+//   - "cf/llama-70b" / "llama-70b" → mapped via CF_MODEL_ALIASES
+//   - "cf/moonshotai/kimi-k2.6" → "@cf/moonshotai/kimi-k2.6"
+// Returns ("", false) when the model is not a CF id and not a known alias.
 func ExpandCFAlias(model string) (string, bool) {
-	if m, ok := CF_MODEL_ALIASES[model]; ok {
+	if model == "" {
+		return "", false
+	}
+	// Already a full Workers AI id.
+	if strings.HasPrefix(model, "@cf/") || strings.HasPrefix(model, "@hf/") {
+		return model, true
+	}
+	key := strings.TrimPrefix(model, "cf/")
+	if m, ok := CF_MODEL_ALIASES[key]; ok {
 		return m, true
+	}
+	// cf/vendor/slug → @cf/vendor/slug (pass-through for any Workers AI model).
+	if strings.Contains(key, "/") {
+		return "@cf/" + key, true
 	}
 	return "", false
 }

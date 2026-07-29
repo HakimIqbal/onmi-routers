@@ -461,8 +461,11 @@ func (hc *HealthChecker) checkCF() {
 		return
 	}
 
-	body := `{"model":"@cf/meta/llama-3.1-8b-instruct","messages":[{"role":"user","content":"Hi"}],"stream":false,"max_tokens":5}`
-	url := fmt.Sprintf("%s/accounts/%s/ai/run/@cf/meta/llama-3.1-8b-instruct", CF_UPSTREAM_URL, key.AccountID)
+	body := `{"messages":[{"role":"user","content":"Hi"}],"stream":false,"max_tokens":5}`
+	// Use a model known to exist on free Workers AI accounts.
+	// llama-3.2-3b returns 404 on many free accounts → false FAIL probes.
+	model := "@cf/meta/llama-3.2-1b-instruct"
+	url := fmt.Sprintf("%s/accounts/%s/ai/run/%s", CF_UPSTREAM_URL, key.AccountID, model)
 	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+key.Token)
 	req.Header.Set("Content-Type", "application/json")

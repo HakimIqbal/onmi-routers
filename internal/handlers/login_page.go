@@ -93,8 +93,22 @@ body {
     </div>
     <button class="login-btn" type="submit">Sign In</button>
   </form>
-  <div class="login-footer">OnmiRouters v5.11</div>
+  <div class="login-footer">OnmiRouters v1.7.9</div>
 </div>
+<script>
+  // PULL: persist the key to localStorage on submit so the dashboard can use a
+  // Bearer token (mirrors 9Router). Cookie auth alone can be blocked by tunnels/proxies.
+  (function(){
+    var f = document.querySelector('form[action="/login"]');
+    if (!f) return;
+    f.addEventListener('submit', function(){
+      try {
+        var k = document.getElementById('key');
+        if (k && k.value) window.localStorage.setItem('gwkey', k.value.trim());
+      } catch(e){}
+    });
+  })();
+</script>
 </body>
 </html>`
 

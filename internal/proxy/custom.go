@@ -5,9 +5,10 @@
 // Two mechanisms:
 //
 //   Custom model    "cb/kimi-k3" → {upstream: codebuddy, model_name: "kimi-k3",
-//                                   owned_by: "codebuddy"}
+//                                   owned_by: "codebuddy",
+//                                   capabilities: ["Vision","Reasoning"]}
 //     Adds a new routable model id that the proxy will forward to a specific
-//     upstream, overriding the default cb/ vs grok- prefix routing.
+//     upstream, overriding the default cb/ vs grok/ vs cf/ prefix routing.
 //
 //   Alias           "my-claude" → "cb/claude-sonnet-4.6"
 //     Rewrites the incoming model field to the target before routing.
@@ -169,14 +170,16 @@ func (r *CustomRegistry) AddModel(id string, cm db.CustomModel) error {
 		return err
 	}
 	switch cm.Upstream {
-	case "codebuddy", "grok":
+	case "codebuddy", "grok", "cloudflare":
 	default:
-		return fmt.Errorf("upstream must be 'codebuddy' or 'grok'")
+		return fmt.Errorf("upstream must be 'codebuddy', 'grok', or 'cloudflare'")
 	}
 	if cm.ModelName == "" {
 		// Default: derive from id (strip cb/ prefix for codebuddy).
 		if cm.Upstream == "codebuddy" {
 			cm.ModelName = strings.TrimPrefix(id, "cb/")
+		} else if cm.Upstream == "cloudflare" {
+			cm.ModelName = strings.TrimPrefix(strings.TrimPrefix(id, "cf/"), "@")
 		} else {
 			cm.ModelName = id
 		}

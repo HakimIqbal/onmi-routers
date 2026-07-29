@@ -154,7 +154,7 @@ func TestComboInModelsList(t *testing.T) {
 		Description: "test",
 	})
 
-	h := proxy.ProxyRequest(nil, nil, nil, nil, nil, comboReg, nil)
+	h := proxy.ProxyRequest(nil, nil, nil, nil, nil, comboReg, nil, nil)
 
 	r := gin.New()
 	r.GET("/v1/models", h)
@@ -176,8 +176,8 @@ func TestComboInModelsList(t *testing.T) {
 	for _, m := range resp.Data {
 		if m["id"] == "combo/shown-in-list" {
 			found = true
-			if m["owned_by"] != "foxrouters" {
-				t.Errorf("owned_by = %v, want foxrouters", m["owned_by"])
+			if m["owned_by"] != "combo" {
+				t.Errorf("owned_by = %v, want combo", m["owned_by"])
 			}
 			break
 		}

@@ -40,6 +40,7 @@ const (
 	RK_CUSTOM_ALIASES = "custom_aliases" // HASH field=alias      value=target model_id
 	RK_COMBOS         = "combos"         // HASH field=combo_name value=Combo JSON (v1.4.0)
 	RK_COMBO_COUNTER  = "combo:counter:" // STRING prefix, atomic INCR for round-robin
+	RK_HIDDEN_MODELS  = "hidden_models"  // HASH field=model_id value=HiddenModel JSON (v1.7.0)
 
 	// Proxy pool (v1.5.0) — dashboard-managed HTTP/SOCKS5 proxies for upstream calls.
 	RK_PROXY         = "fr:proxy:"         // HASH prefix: fr:proxy:<id> (fields: protocol, host, port, …)
@@ -816,14 +817,25 @@ func (s *Store) GetRequestDetail(id uint64) (*RequestDetail, error) {
 // REDIS — Custom models + aliases (v1.3.0)
 // ============================================================================
 
-// CustomModel is a user-defined routing entry. `Upstream` picks the backend
-// (codebuddy | grok), `ModelName` is the actual model string forwarded to
-// that backend (after the cb/ prefix has been stripped for CodeBuddy), and
-// `OwnedBy` is the label shown in /v1/models.
+// CustomModel is the persisted shape of a user-defined model routing override.
+// `Upstream` selects the backend (codebuddy | grok | cloudflare), `ModelName` is
+// the actual model string forwarded to that backend (after the cb/ prefix has been
+// stripped for CodeBuddy), and `OwnedBy` is the label shown in /v1/models.
+// `Capabilities` is a free-form list of capability tags (Vision/Reasoning/Code/
+// Tools/Text/Fast/Long-ctx) shown as badges in the dashboard.
 type CustomModel struct {
-	Upstream  string `json:"upstream"`   // "codebuddy" | "grok"
-	ModelName string `json:"model_name"` // actual name sent upstream
-	OwnedBy   string `json:"owned_by"`   // display label for /v1/models
+	Upstream      string   `json:"upstream"`      // "codebuddy" | "grok" | "cloudflare"
+	ModelName     string   `json:"model_name"`    // actual name sent upstream
+	OwnedBy       string   `json:"owned_by"`      // display label for /v1/models
+	Capabilities  []string `json:"capabilities"` // capability badges
+}
+
+// HiddenModel marks a built-in catalog model as hidden from /v1/models so the
+// operator can drop providers they don't support without rebuilding the binary.
+type HiddenModel struct {
+	ID        string `json:"id"`
+	Hidden    bool   `json:"hidden"`
+	HiddenAt  int64  `json:"hidden_at"`
 }
 
 // LoadCustomModels returns all custom-model entries as a map keyed by model_id.
@@ -912,6 +924,69 @@ func (s *Store) DeleteCustomAlias(alias string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	return s.rdb.HDel(ctx, RK_CUSTOM_ALIASES, alias).Err()
+}
+
+// ============================================================================
+// REDIS — Hidden Models (v1.7.0)
+// Allows the operator to hide built-in catalog models (e.g. providers they
+// don't support) without rebuilding the binary.
+// ============================================================================
+
+// LoadHiddenModels returns the map of hidden model ids → HiddenModel.
+func (s *Store) LoadHiddenModels() (map[string]HiddenModel, error) {
+	out := map[string]HiddenModel{}
+	if s == nil || s.rdb == nil {
+		return out, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	vals, err := s.rdb.HGetAll(ctx, RK_HIDDEN_MODELS).Result()
+	if err != nil {
+		return out, err
+	}
+	for id, raw := range vals {
+		var h HiddenModel
+		if err := json.Unmarshal([]byte(raw), &h); err != nil {
+			slog.Warn("bad hidden_models entry", "module", "db-redis", "id", id, "error", err)
+			continue
+		}
+		if h.ID == "" {
+			h.ID = id
+		}
+		out[id] = h
+	}
+	return out, nil
+}
+
+// SaveHiddenModel upserts one hidden-model flag.
+func (s *Store) SaveHiddenModel(h HiddenModel) error {
+	if s == nil || s.rdb == nil {
+		return fmt.Errorf("redis not ready")
+	}
+	if h.ID == "" {
+		return fmt.Errorf("id required")
+	}
+	h.HiddenAt = time.Now().Unix()
+	blob, err := json.Marshal(h)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	return s.rdb.HSet(ctx, RK_HIDDEN_MODELS, h.ID, string(blob)).Err()
+}
+
+// DeleteHiddenModel restores a hidden model to visible.
+func (s *Store) DeleteHiddenModel(id string) error {
+	if s == nil || s.rdb == nil {
+		return fmt.Errorf("redis not ready")
+	}
+	if id == "" {
+		return fmt.Errorf("id required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	return s.rdb.HDel(ctx, RK_HIDDEN_MODELS, id).Err()
 }
 
 // ============================================================================

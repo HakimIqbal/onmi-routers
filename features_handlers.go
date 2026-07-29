@@ -27,6 +27,7 @@ func handleSetTokenSaver() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			RTK      *bool `json:"rtk"`
+			Headroom *bool `json:"headroom"`
 			Caveman  *bool `json:"caveman"`
 			Ponytail *bool `json:"ponytail"`
 		}
@@ -38,20 +39,28 @@ func handleSetTokenSaver() gin.HandlerFunc {
 		if req.RTK != nil {
 			cur.RTK = *req.RTK
 		}
+		if req.Headroom != nil {
+			cur.Headroom = *req.Headroom
+		}
 		if req.Caveman != nil {
 			cur.Caveman = *req.Caveman
 		}
 		if req.Ponytail != nil {
 			cur.Ponytail = *req.Ponytail
 		}
-		TokenSaverCfg.Set(cur.RTK, cur.Caveman, cur.Ponytail)
+		TokenSaverCfg.Set(cur.RTK, cur.Headroom, cur.Caveman, cur.Ponytail)
 		// Sync into proxy hot-path global.
 		proxy.TokenSaver = TokenSaverCfg
 		// Persist to Redis.
 		if rc := dbRef.Redis(); rc != nil {
 			_ = rc.Set(context.Background(), "tokensaver:cfg", TokenSaverCfg.ToJSON(), 0).Err()
 		}
-		c.JSON(200, cur)
+		c.JSON(200, gin.H{
+			"rtk":      cur.RTK,
+			"headroom": cur.Headroom,
+			"caveman":  cur.Caveman,
+			"ponytail": cur.Ponytail,
+		})
 	}
 }
 
@@ -129,7 +138,9 @@ func handleCLIToolsConfig() gin.HandlerFunc {
 		models := []string{
 			"grok-4.5", "grok-4.5-fast", "grok-3",
 			"cb/claude-sonnet-4.6", "cb/claude-opus-4.6", "cb/gpt-5",
-			"cf/meta/llama-3.2-1b-instruct", "cf/meta/llama-3.2-3b-instruct",
+			"@cf/moonshotai/kimi-k2.6", "@cf/moonshotai/kimi-k2.7-code", "@cf/zai-org/glm-4.7-flash",
+			"@cf/openai/gpt-oss-120b", "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+			"@cf/meta/llama-3.1-8b-instruct-fp8-fast", "@cf/google/gemma-4-26b-a4b-it",
 			"combo/auto", "combo/coding", "combo/cheap",
 		}
 

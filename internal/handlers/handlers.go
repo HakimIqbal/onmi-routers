@@ -543,7 +543,7 @@ func HandleHistory(store *db.Store) gin.HandlerFunc {
 			return
 		}
 
-		modelStats, err := store.GetModelStats(since, 20)
+		modelStats, err := store.GetModelStats(since, 500)
 		if err != nil {
 			slog.Error("internal error", "module", "handler", "error", err)
 			c.JSON(500, gin.H{"error": "internal server error"})
@@ -841,6 +841,9 @@ func HandleKeyUsage(am *auth.Manager) gin.HandlerFunc {
 // unauthenticated. Clients set the key via localStorage or ?key= URL param.
 func HandleDashboard() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// No-store: dashboard.html changes every deploy; never let the browser
+		// serve a stale cached copy (would break JS / buttons after updates).
+		c.Header("Cache-Control", "no-store, max-age=0")
 		c.Data(200, "text/html; charset=utf-8", []byte(dashboardHTML))
 	}
 }
@@ -888,7 +891,7 @@ func HandleLogin(am *auth.Manager, sessions *auth.SessionStore) gin.HandlerFunc 
 
 		c.SetSameSite(http.SameSiteLaxMode)
 		cookieSecure := os.Getenv("COOKIE_SECURE") != "0"
-		c.SetCookie("foxrouters_session", token, int(auth.SessionTTL.Seconds()), "/", "", cookieSecure, true)
+		c.SetCookie("foxrouters_session", token, int(auth.SessionIdleTTL.Seconds()), "/", "", cookieSecure, true)
 		c.Redirect(302, "/dashboard")
 	}
 }
@@ -1192,28 +1195,120 @@ func HandleDeleteCFKey(cfKM *upstream.CFKeyManager) gin.HandlerFunc {
 	}
 }
 
-// HandleCFStats returns a per-account snapshot of the Cloudflare pool.
+// HandleCFStats returns a CF pool snapshot.
+// Default: summary only (fast). ?detail=1&limit=N returns account rows for table.
 func HandleCFStats(cfKM *upstream.CFKeyManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		keys := cfKM.GetAll()
-		result := make([]gin.H, 0)
+		total := len(keys)
+		active, disabled := 0, 0
+		var usedSum float64
+		var reqSum int64
 		for _, k := range keys {
 			s := k.Snapshot()
-			result = append(result, gin.H{
-				"account_id":    s.AccountID,
-				"token":        s.Token,
-				"quota_used":   s.QuotaUsed,
-				"quota_limit":  s.QuotaLimit,
-				"quota_remain": s.QuotaRemain,
-				"total_requests": s.TotalReqs,
-				"disabled":     s.Disabled,
-				"disabled_at":  s.DisabledAt,
-			})
+			if s.Disabled {
+				disabled++
+			} else {
+				active++
+			}
+			usedSum += s.QuotaUsed
+			reqSum += s.TotalReqs
 		}
-		c.JSON(200, gin.H{
-			"cloudflare_accounts": result,
-			"cf_total":            len(result),
-		})
+		out := gin.H{
+			"cf_total":    total,
+			"cf_active":   active,
+			"cf_disabled": disabled,
+			"quota_used_sum": usedSum,
+			"total_requests_sum": reqSum,
+		}
+		// detail=1 for accounts table (paginated server-side)
+		if c.Query("detail") == "1" || c.Query("detail") == "true" {
+			limit := 50
+			if v := c.Query("limit"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil && n > 0 {
+					limit = n
+					if limit > 500 {
+						limit = 500
+					}
+				}
+			}
+			offset := 0
+			if v := c.Query("offset"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil && n > 0 {
+					offset = n
+				}
+			}
+			// optional filter: q= substring on account_id, status=active|disabled
+			q := strings.ToLower(strings.TrimSpace(c.Query("q")))
+			status := strings.ToLower(strings.TrimSpace(c.Query("status")))
+			filtered := make([]gin.H, 0, min(limit, total))
+			matched := 0
+			for _, k := range keys {
+				s := k.Snapshot()
+				if status == "active" && s.Disabled {
+					continue
+				}
+				if status == "disabled" && !s.Disabled {
+					continue
+				}
+				if q != "" && !strings.Contains(strings.ToLower(s.AccountID), q) {
+					continue
+				}
+				if matched < offset {
+					matched++
+					continue
+				}
+				if len(filtered) >= limit {
+					matched++
+					// still count rest for total_matched
+					continue
+				}
+				// mask token for UI (never dump full 11k secrets to browser)
+				tok := s.Token
+				if len(tok) > 12 {
+					tok = tok[:6] + "..." + tok[len(tok)-4:]
+				}
+				filtered = append(filtered, gin.H{
+					"account_id":     s.AccountID,
+					"token":          tok,
+					"quota_used":     s.QuotaUsed,
+					"quota_limit":    s.QuotaLimit,
+					"quota_remain":   s.QuotaRemain,
+					"total_requests": s.TotalReqs,
+					"disabled":       s.Disabled,
+					"disabled_at":    s.DisabledAt,
+				})
+				matched++
+			}
+			// recount matched without building full list when over limit
+			if matched <= offset+len(filtered) && (q != "" || status != "") {
+				// recompute total match cheaply
+				m := 0
+				for _, k := range keys {
+					s := k.Snapshot()
+					if status == "active" && s.Disabled {
+						continue
+					}
+					if status == "disabled" && !s.Disabled {
+						continue
+					}
+					if q != "" && !strings.Contains(strings.ToLower(s.AccountID), q) {
+						continue
+					}
+					m++
+				}
+				matched = m
+			} else if q == "" && status == "" {
+				matched = total
+			} else {
+				// matched is already calculated in the loop
+			}
+			out["cloudflare_accounts"] = filtered
+			out["offset"] = offset
+			out["limit"] = limit
+			out["matched"] = matched
+		}
+		c.JSON(200, out)
 	}
 }
 func HandleCleanupBanned(grokAM *upstream.GrokAccountManager) gin.HandlerFunc {

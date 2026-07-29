@@ -52,6 +52,10 @@ var (
 	handleAddAlias          = handlers.HandleAddAlias
 	handleDeleteAlias       = handlers.HandleDeleteAlias
 
+	// v1.7.0 — hidden models (hide catalog entries)
+	handleListHiddenModels = handlers.HandleListHiddenModels
+	handleSetHiddenModel   = handlers.HandleSetHiddenModel
+
 	// v1.4.0 — combos
 	handleListCombos  = handlers.HandleListCombos
 	handleGetCombo    = handlers.HandleGetCombo
@@ -77,6 +81,8 @@ var (
 	handleTunnelEnable  = handlers.HandleTunnelEnable
 	handleTunnelDisable = handlers.HandleTunnelDisable
 	handleTunnelRestart = handlers.HandleTunnelRestart
+	// Tailscale status for Endpoint page (read-only)
+	handleTailscaleStatus = handlers.HandleTailscaleStatus
 )
 
 // Function wrappers for handlers whose signature changed to accept

@@ -11,19 +11,25 @@ package main
 
 import (
 	_ "embed"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"foxrouters/internal/handlers"
 	"foxrouters/internal/console"
 	"foxrouters/internal/db"
+	"foxrouters/internal/features"
+	"foxrouters/internal/mcp"
+	"foxrouters/internal/multimodal"
 	"foxrouters/internal/proxy"
 	"foxrouters/internal/ratelimit"
 	"foxrouters/internal/auth"
@@ -148,7 +154,7 @@ func main() {
 
 	// Auth + rate limiter
 	authMgr := newAuthManager(db)
-	sessions := NewSessionStore() // P3-3: session token indirection (cookie ≠ API key)
+	sessions := NewSessionStore(db.Redis()) // P3-3: session token indirection (cookie ≠ API key); Redis-backed so restarts don't kill sessions
 	rateLimiter := ratelimit.New(RATE_LIMIT_RPM, RATE_LIMIT_BURST, RATE_LIMIT_WINDOW)
 	// (rateLimiter previously carried a db handle for rate-limited request
 	//  logging, but nothing actually consumed it — dropped in the split.)
@@ -166,6 +172,8 @@ func main() {
 	if err := comboReg.Load(); err != nil {
 		slog.Warn("combo registry Load failed, starting empty", "module", "combo", "error", err)
 	}
+	// Seed 4-tier / cheap / coding / cf-free presets if missing.
+	features.SeedDefaultCombos(comboReg)
 	// Self-healer worker: logs combos with OPEN-upstream models every 30s.
 	go func() {
 		t := time.NewTicker(30 * time.Second)
@@ -326,6 +334,10 @@ func main() {
 	r.POST("/api/aliases", csrfGuard(), adminAuth, handleAddAlias(customReg))
 	r.DELETE("/api/aliases/*alias", csrfGuard(), adminAuth, handleDeleteAlias(customReg))
 
+	// Hidden catalog models (v1.7.0) — hide providers the operator doesn't use.
+	r.GET("/api/models/hidden", adminAuth, handleListHiddenModels(db))
+	r.POST("/api/models/hidden", csrfGuard(), adminAuth, handleSetHiddenModel(db))
+
 	// Combos (v1.4.0) — admin only. Combos group models under a virtual
 	// "combo/<name>" alias with a strategy (fallback | round_robin).
 	r.GET("/api/combos", adminAuth, handleListCombos(comboReg))
@@ -349,6 +361,7 @@ func main() {
 	r.POST("/api/tunnel/enable", csrfGuard(), adminAuth, handleTunnelEnable(tunnelMgr))
 	r.POST("/api/tunnel/disable", csrfGuard(), adminAuth, handleTunnelDisable(tunnelMgr))
 	r.POST("/api/tunnel/restart", csrfGuard(), adminAuth, handleTunnelRestart(tunnelMgr))
+	r.GET("/api/tailscale/status", adminAuth, handleTailscaleStatus())
 
 	// ── Token Saver (RTK + Caveman + Ponytail) admin API ──
 	r.GET("/api/tokensaver", adminAuth, handleGetTokenSaver())
@@ -360,17 +373,96 @@ func main() {
 	// ── CLI Tools config generator (9Router-style client setup) ──
 	r.GET("/api/cli-tools", adminAuth, handleCLIToolsConfig())
 
+	// ── Live quota + cache + cost (OmniRoute-style ops surface) ──
+	r.GET("/api/quota", adminAuth, func(c *gin.Context) {
+		// Refresh pool snapshots from live managers.
+		if proxy.QuotaTracker != nil {
+			proxy.QuotaTracker.SetPoolS("grok", grokAM.Len(), grokAM.Len(), 0, false)
+			proxy.QuotaTracker.SetPoolS("codebuddy", cbKM.Len(), cbKM.Len(), 0, false)
+			proxy.QuotaTracker.SetPoolS("cloudflare", cfKM.Len(), cfKM.Len(), 0, false)
+		}
+		c.JSON(200, gin.H{
+			"quota": proxy.QuotaTracker.All(),
+			"cache": proxy.SemanticCache.Stats(),
+			"note":  "live in-process quota + semantic cache",
+		})
+	})
+	r.GET("/api/cache", adminAuth, func(c *gin.Context) {
+		c.JSON(200, proxy.SemanticCache.Stats())
+	})
+	r.POST("/api/cache/toggle", csrfGuard(), adminAuth, func(c *gin.Context) {
+		var req struct {
+			Enabled *bool `json:"enabled"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		if req.Enabled != nil {
+			proxy.SemanticCache.SetEnabled(*req.Enabled)
+		}
+		c.JSON(200, proxy.SemanticCache.Stats())
+	})
+	r.GET("/api/cost/summary", adminAuth, func(c *gin.Context) {
+		hours := 24
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		stats, err := db.GetRequestStats(since)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{
+			"period_hours":   hours,
+			"total_cost_usd": stats.TotalCostUsd,
+			"total_tokens":   stats.TotalTokens,
+			"total_requests": stats.TotalRequests,
+			"live_quota":     proxy.QuotaTracker.All(),
+		})
+	})
+
+	// Wire multi-modal CF keys + Gemini→chat proxy hook + MCP deps
+	multimodal.CFKeys = cfKM
+	multimodal.ProxyChat = func(c *gin.Context, openaiBody []byte) {
+		// Re-inject body and run normal chat proxy.
+		c.Request.URL.Path = "/v1/chat/completions"
+		c.Request.Body = io.NopCloser(bytes.NewReader(openaiBody))
+		c.Request.ContentLength = int64(len(openaiBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		proxyRequest(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM, db)(c)
+	}
+	mcp.DBStore = db
+	mcp.BaseURL = "http://127.0.0.1:" + port
+	mcp.EvalKeyFn = func() string {
+		if k := os.Getenv("EVAL_GATEWAY_KEY"); k != "" {
+			return k
+		}
+		// Fall back to first Redis gw key (raw) for local evals.
+		// Keys are stored as gw:key:<raw>.
+		return ""
+	}
+
+	// Multi-modal is dispatched inside /v1/*path catch-all (gin tree constraint).
+	// MCP + A2A agent surface (non-/v1 paths — safe alongside catch-all)
+	mcp.Register(r)
+
 	// /v1/*path catch-all — gin's httprouter doesn't allow a static
 	// /v1/messages segment alongside /v1/*path, so we dispatch the
-	// Anthropic Messages API adapter from inside the catch-all (POST only).
+	// Anthropic Messages API adapter + multi-modal stubs from inside.
 	// Auth is handled by the global AuthMiddleware (Bearer) +
 	// anthropicAuthMiddleware (rewrites x-api-key → Authorization: Bearer).
 	r.Any("/v1/*path", func(c *gin.Context) {
 		if c.Request.URL.Path == "/v1/messages" && c.Request.Method == http.MethodPost {
-			handleMessages(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM)(c)
+			handleMessages(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM, db)(c)
 			return
 		}
-		proxyRequest(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM)(c)
+		// Gemini Google-style paths
+		p := c.Request.URL.Path
+		if strings.Contains(p, ":generateContent") || strings.Contains(p, ":streamGenerateContent") {
+			if multimodal.Handle(c) {
+				return
+			}
+		}
+		if multimodal.Handle(c) {
+			return
+		}
+		proxyRequest(grokAM, cbKM, hc, authMgr, customReg, comboReg, cfKM, db)(c)
 	})
 
 	// CF admin endpoints (cf/* pool).

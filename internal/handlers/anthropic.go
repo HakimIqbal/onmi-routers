@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"foxrouters/internal/auth"
+	"foxrouters/internal/db"
 	"foxrouters/internal/proxy"
 	"foxrouters/internal/upstream"
 
@@ -855,8 +856,8 @@ func AnthropicAuthMiddleware() gin.HandlerFunc {
 // It reuses proxy.ProxyRequest for the actual upstream call — routing, auth
 // (Bearer/x-api-key), rate limiting, metrics, and ClickHouse audit all
 // continue to work unchanged; we just translate request/response formats.
-func HandleMessages(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, reg *proxy.CustomRegistry, combos *proxy.ComboRegistry, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
-	inner := proxy.ProxyRequest(grokAM, cbKM, hc, authMgr, reg, combos, cfKM)
+func HandleMessages(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, reg *proxy.CustomRegistry, combos *proxy.ComboRegistry, cfKM *upstream.CFKeyManager, store *db.Store) gin.HandlerFunc {
+	inner := proxy.ProxyRequest(grokAM, cbKM, hc, authMgr, reg, combos, cfKM, store)
 
 	return func(c *gin.Context) {
 		// Cap request body — same limit as chat/completions.

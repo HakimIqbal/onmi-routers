@@ -49,10 +49,55 @@ var table = map[string]Price{
 	// ── DeepSeek ──
 	"deepseek-reasoner": {In: 0.55, Out: 2.19},
 	"deepseek-chat":     {In: 0.27, Out: 1.10},
-	// ── Cloudflare Workers AI — bills per "neuron", not tokens ──
-	// Flat estimate ~$0.011 / 1M neurons (Llama-3.2-1B class). Paid plans
-	// vary per model; this is a sane default for the spend dashboard.
+	// ── Cloudflare Workers AI — official token prices (USD / 1M tokens)
+	// Source: https://developers.cloudflare.com/workers-ai/platform/pricing/#llm-model-pricing
+	// Matched longest-prefix on lowercased model id (incl. @cf/ and cf/ forms).
+	"@cf/meta/llama-3.2-1b-instruct":              {In: 0.027, Out: 0.201},
+	"@cf/meta/llama-3.2-3b-instruct":              {In: 0.051, Out: 0.335},
+	"@cf/meta/llama-3.1-8b-instruct-fp8-fast":     {In: 0.045, Out: 0.384},
+	"@cf/meta/llama-3.2-11b-vision-instruct":      {In: 0.049, Out: 0.676},
+	"@cf/meta/llama-3.1-70b-instruct-fp8-fast":    {In: 0.293, Out: 2.253},
+	"@cf/meta/llama-3.3-70b-instruct-fp8-fast":    {In: 0.293, Out: 2.253},
+	"@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": {In: 0.497, Out: 4.881},
+	"@cf/mistral/mistral-7b-instruct-v0.1":        {In: 0.110, Out: 0.190},
+	"@cf/mistralai/mistral-small-3.1-24b-instruct": {In: 0.351, Out: 0.555},
+	"@cf/meta/llama-3.1-8b-instruct-fp8":          {In: 0.152, Out: 0.287},
+	"@cf/meta/llama-3.1-8b-instruct-awq":          {In: 0.123, Out: 0.266},
+	"@cf/meta/llama-3.1-8b-instruct":              {In: 0.282, Out: 0.827},
+	"@cf/meta/llama-3-8b-instruct-awq":            {In: 0.123, Out: 0.266},
+	"@cf/meta/llama-3-8b-instruct":                {In: 0.282, Out: 0.827},
+	"@cf/meta/llama-2-7b-chat-fp16":               {In: 0.556, Out: 6.667},
+	"@cf/meta/llama-guard-3-8b":                   {In: 0.484, Out: 0.030},
+	"@cf/meta/llama-4-scout-17b-16e-instruct":     {In: 0.270, Out: 0.850},
+	"@cf/google/gemma-3-12b-it":                   {In: 0.345, Out: 0.556},
+	"@cf/google/gemma-4-26b-a4b-it":               {In: 0.100, Out: 0.300},
+	"@cf/qwen/qwq-32b":                            {In: 0.660, Out: 1.000},
+	"@cf/qwen/qwen2.5-coder-32b-instruct":         {In: 0.660, Out: 1.000},
+	"@cf/qwen/qwen3-30b-a3b-fp8":                  {In: 0.051, Out: 0.335},
+	"@cf/openai/gpt-oss-120b":                     {In: 0.350, Out: 0.750},
+	"@cf/openai/gpt-oss-20b":                      {In: 0.200, Out: 0.300},
+	"@cf/aisingapore/gemma-sea-lion-v4-27b-it":    {In: 0.351, Out: 0.555},
+	"@cf/ibm-granite/granite-4.0-h-micro":         {In: 0.017, Out: 0.112},
+	"@cf/zai-org/glm-4.7-flash":                   {In: 0.060, Out: 0.400},
+	"@cf/zai-org/glm-5.2":                         {In: 1.400, Out: 4.400},
+	"@cf/nvidia/nemotron-3-120b-a12b":             {In: 0.500, Out: 1.500},
+	"@cf/moonshotai/kimi-k2.5":                    {In: 0.600, Out: 3.000},
+	"@cf/moonshotai/kimi-k2.6":                    {In: 0.950, Out: 4.000},
+	"@cf/moonshotai/kimi-k2.7-code":               {In: 0.950, Out: 4.000},
+	// short-form cf/* (same prices; ExpandCFAlias maps to @cf/…)
+	"cf/llama-70b":      {In: 0.293, Out: 2.253},
+	"cf/llama-8b":       {In: 0.045, Out: 0.384},
+	"cf/deepseek-r1":    {In: 0.497, Out: 4.881},
+	"cf/kimi-k2.5":      {In: 0.600, Out: 3.000},
+	"cf/kimi-k2.6":      {In: 0.950, Out: 4.000},
+	"cf/kimi-k2.7-code": {In: 0.950, Out: 4.000},
+	"cf/glm-4.7-flash":  {In: 0.060, Out: 0.400},
+	"cf/glm-5.2":        {In: 1.400, Out: 4.400},
+	"cf/gpt-oss-120b":   {In: 0.350, Out: 0.750},
+	"cf/gpt-oss-20b":    {In: 0.200, Out: 0.300},
+	// Fallback for any other @cf/ model (neuron billing; $0 until mapped)
 	"@cf/": {In: 0.0, Out: 0.0},
+	"cf/":  {In: 0.0, Out: 0.0},
 	// ── Defaults ──
 	"combo/": {In: 1.00, Out: 5.00},
 }

@@ -2,17 +2,22 @@
 // name ("combo/<name>") with a routing strategy applied per request. Backed
 // by Redis (see internal/db) and cached in memory behind a sync.RWMutex.
 //
-// Strategies (OmniRoute-style routing):
+// Strategies (OmniRoute/9Router-style routing):
 //
 //	fallback     Try models in order — models[0] first; on upstream failure
 //	             the proxy caller walks NextInFallback until one succeeds.
 //	round_robin  Rotate models across requests (atomic Redis INCR).
 //	latency      Pick the model whose upstream has the LOWEST avg latency.
 //	cost         Pick the model with the LOWEST estimated USD cost per request.
+//	priority     Alias of fallback (explicit tier order).
+//	fill_first   Prefer first healthy model (skip OPEN circuits) then stick.
+//	least_used   Prefer model with lowest request counter (local).
+//	random       Uniform random among healthy models.
+//	auto         4-tier auto: prefer non-OPEN; order models[0..n] as
+//	             subscription → cheap → free; self-heal OPEN.
 //
 // Self-healer: models whose upstream circuit is OPEN are skipped for
-// latency/cost/round_robin selection (mirrors OmniRoute's selfHealer which
-// prunes unhealthy models out of combos at request time).
+// smart strategies (mirrors OmniRoute's selfHealer).
 package proxy
 
 import (
@@ -116,9 +121,7 @@ func (r *ComboRegistry) Resolve(model string) (string, bool) {
 			idx += len(c.Models)
 		}
 		return c.Models[idx], true
-	case "latency", "cost":
-		// OmniRoute-style smart routing. Self-heal: skip models whose
-		// upstream circuit is OPEN.
+	case "latency", "cost", "fill_first", "least_used", "random", "auto", "priority":
 		return r.resolveSmart(c, c.Strategy)
 	default:
 		// "fallback" (also the default) — return head; caller can call
@@ -127,10 +130,9 @@ func (r *ComboRegistry) Resolve(model string) (string, bool) {
 	}
 }
 
-// resolveSmart picks the best model for latency/cost strategies, skipping
-// models whose upstream circuit is OPEN (self-healer). When hc is nil or no
-// models are healthy, it falls back to the first model (so requests still
-// flow rather than erroring).
+// resolveSmart picks the best model for smart strategies, skipping models
+// whose upstream circuit is OPEN (self-healer). When hc is nil or no models
+// are healthy, it falls back to the first model (so requests still flow).
 func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
 	healthy := make([]string, 0, len(c.Models))
 	for _, m := range c.Models {
@@ -142,30 +144,92 @@ func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
 		healthy = append(healthy, m)
 	}
 	if len(healthy) == 0 {
-		// All unhealthy — degrade gracefully to first model.
 		return c.Models[0], true
 	}
-	best := healthy[0]
-	var bestScore float64
 	switch strategy {
+	case "fill_first", "priority":
+		return healthy[0], true
+	case "auto":
+		// 4-tier free-first drain when free CF is present later in list;
+		// prefer first healthy that is not OPEN. Prefer CF free models when
+		// subscription head is OPEN (already filtered). If head is CF and
+		// later models exist, still pick head (ordered sub→cheap→free).
+		// When all remaining are CF, prefer cheapest alias first among healthy.
+		best := healthy[0]
+		// Prefer models with lower estimated cost if multiple same-tier
+		// (keeps free/cheap CF preferred when higher tiers all OPEN).
+		bestCost := cost.USD(best, 1_000_000, 1_000_000)
+		// Only re-rank among CF free tier when first is also CF
+		if strings.HasPrefix(best, "@cf/") || strings.HasPrefix(best, "cf/") {
+			for _, m := range healthy[1:] {
+				if !(strings.HasPrefix(m, "@cf/") || strings.HasPrefix(m, "cf/")) {
+					continue
+				}
+				if s := cost.USD(m, 1_000_000, 1_000_000); s < bestCost {
+					bestCost = s
+					best = m
+				}
+			}
+		}
+		return best, true
+	case "random":
+		n := fallbackCounter(c.Name + ":rnd")
+		if n < 0 {
+			n = -n
+		}
+		return healthy[int(n)%len(healthy)], true
+	case "least_used":
+		best := healthy[0]
+		bestN := r.usageCount(best)
+		for _, m := range healthy[1:] {
+			if n := r.usageCount(m); n < bestN {
+				bestN = n
+				best = m
+			}
+		}
+		r.bumpUsage(best)
+		return best, true
 	case "latency":
-		bestScore = r.avgLatencyMs(best)
+		best := healthy[0]
+		bestScore := r.avgLatencyMs(best)
 		for _, m := range healthy[1:] {
 			if s := r.avgLatencyMs(m); s < bestScore {
 				bestScore = s
 				best = m
 			}
 		}
+		return best, true
 	case "cost":
-		bestScore = cost.USD(best, 1_000_000, 1_000_000) // 1M/1M baseline for ranking
+		best := healthy[0]
+		bestScore := cost.USD(best, 1_000_000, 1_000_000)
 		for _, m := range healthy[1:] {
 			if s := cost.USD(m, 1_000_000, 1_000_000); s < bestScore {
 				bestScore = s
 				best = m
 			}
 		}
+		return best, true
+	default:
+		return healthy[0], true
 	}
-	return best, true
+}
+
+// usageCount / bumpUsage — local least-used counters (per process).
+var (
+	usageMu sync.Mutex
+	usageN  = map[string]int64{}
+)
+
+func (r *ComboRegistry) usageCount(model string) int64 {
+	usageMu.Lock()
+	defer usageMu.Unlock()
+	return usageN[model]
+}
+
+func (r *ComboRegistry) bumpUsage(model string) {
+	usageMu.Lock()
+	usageN[model]++
+	usageMu.Unlock()
 }
 
 // upstreamOpen reports whether the upstream that would serve model m has an
@@ -298,9 +362,10 @@ func (r *ComboRegistry) AddCombo(c Combo) error {
 	switch c.Strategy {
 	case "":
 		c.Strategy = "fallback"
-	case "fallback", "round_robin", "latency", "cost":
+	case "fallback", "round_robin", "latency", "cost",
+		"priority", "fill_first", "least_used", "random", "auto":
 	default:
-		return fmt.Errorf("strategy must be 'fallback', 'round_robin', 'latency', or 'cost'")
+		return fmt.Errorf("strategy must be fallback|round_robin|latency|cost|priority|fill_first|least_used|random|auto")
 	}
 	// Trim + drop empty model entries.
 	cleaned := make([]string, 0, len(c.Models))

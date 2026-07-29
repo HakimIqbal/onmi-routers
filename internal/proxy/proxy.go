@@ -20,14 +20,17 @@ import (
 	"time"
 
 	"foxrouters/internal/auth"
+	"foxrouters/internal/cache"
 	"foxrouters/internal/cost"
 	"foxrouters/internal/db"
+	"foxrouters/internal/guardrails"
 	"foxrouters/internal/metrics"
+	"foxrouters/internal/quota"
+	"foxrouters/internal/rtk"
+	"foxrouters/internal/tokensaver"
 	"foxrouters/internal/upstream"
 
 	"github.com/gin-gonic/gin"
-	"foxrouters/internal/rtk"
-	"foxrouters/internal/tokensaver"
 )
 
 // TokenSaver is the shared Token Saver config (RTK input + Caveman/Ponytail
@@ -37,6 +40,12 @@ var TokenSaver = tokensaver.DefaultConfig()
 // RTKEnabled gates only the input-compression half. Kept for back-compat
 // with env var; prefer TokenSaver.Get().RTK.
 var RTKEnabled = os.Getenv("RTK_ENABLED") != "false"
+
+// SemanticCache stores recent non-stream chat responses (exact key).
+var SemanticCache = cache.New(5*time.Minute, 512)
+
+// QuotaTracker tracks live pool/spend per upstream family.
+var QuotaTracker = quota.New()
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -149,7 +158,7 @@ func toString(v interface{}) string {
 // Fallback combos retry on 5xx by buffering the upstream response through a
 // httptest-style recorder and only flushing to the real writer on success
 // or list exhaustion.
-func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, registry *CustomRegistry, combos *ComboRegistry, cfKM *upstream.CFKeyManager) gin.HandlerFunc {
+func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManager, hc *upstream.HealthChecker, authMgr *auth.Manager, registry *CustomRegistry, combos *ComboRegistry, cfKM *upstream.CFKeyManager, store *db.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
@@ -208,46 +217,63 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				{"id": "cb/kimi-k3", "object": "model", "owned_by": "codebuddy"},
 				// CodeBuddy — Default
 				{"id": "cb/default-model", "object": "model", "owned_by": "codebuddy"},
-				// Cloudflare (cf/*) — Workers AI models (expanded catalog)
-				{"id": "cf/llama-70b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "cf/llama-8b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "cf/deepseek-r1", "object": "model", "owned_by": "cloudflare"},
-				{"id": "cf/qwen-32b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "cf/qwen-14b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "cf/mistral-7b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				// Cloudflare Workers AI — full LLM catalog from
+				// https://developers.cloudflare.com/workers-ai/platform/pricing/#llm-model-pricing
+				// (official list prices; ids are the Workers AI model slugs).
 				{"id": "@cf/meta/llama-3.2-1b-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3.2-3b-instruct", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/meta/llama-3.2-11b-vision-instruct", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/meta/llama-3.1-8b-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.2-11b-vision-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/mistral/mistral-7b-instruct-v0.1", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/mistralai/mistral-small-3.1-24b-instruct", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-3.1-8b-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3.1-8b-instruct-fp8", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3.1-8b-instruct-awq", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/meta/llama-3.1-70b-instruct-fp8-fast", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/meta/llama-3.8b-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3-8b-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-3-8b-instruct-awq", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-2-7b-chat-fp16", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/meta/llama-guard-3-8b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/meta/llama-4-scout-17b-16e-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/google/gemma-3-12b-it", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/google/gemma-2b-it", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/mistral/mistral-7b-instruct-v0.1", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/mistralai/mistral-small-3.1-24b-instruct", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/deepseek-ai/deepseek-r1-distill-llama-70b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/google/gemma-4-26b-a4b-it", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/qwen/qwq-32b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/qwen/qwen2.5-coder-32b-instruct", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/qwen/qwen3-30b-a3b-fp8", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/qwen/qwen3-32b", "object": "model", "owned_by": "cloudflare"},
 				{"id": "@cf/openai/gpt-oss-120b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/meta/llama-4-scout-17b-16e-instruct", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/black-forest-labs/flux-2-dev", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/black-forest-labs/flux-2-klein-9b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/black-forest-labs/flux-2-klein-4b", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/moondream/moondream3.1-9B-A2B", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/openai/whisper", "object": "model", "owned_by": "cloudflare"},
-				{"id": "@cf/openai/whisper-large-v3-turbo", "object": "model", "owned_by": "cloudflare"},
-				}
+				{"id": "@cf/openai/gpt-oss-20b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/aisingapore/gemma-sea-lion-v4-27b-it", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/ibm-granite/granite-4.0-h-micro", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/zai-org/glm-4.7-flash", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/zai-org/glm-5.2", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/nvidia/nemotron-3-120b-a12b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/moonshotai/kimi-k2.5", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/moonshotai/kimi-k2.6", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/moonshotai/kimi-k2.7-code", "object": "model", "owned_by": "cloudflare"},
+				// Friendly short aliases → expanded by ExpandCFAlias
+				{"id": "cf/llama-70b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/llama-8b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/deepseek-r1", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/qwen-32b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/mistral-7b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/kimi-k2.5", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/kimi-k2.6", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/kimi-k2.7-code", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/glm-4.7-flash", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/glm-5.2", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/gpt-oss-120b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/gpt-oss-20b", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/llama-4-scout", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/gemma-4", "object": "model", "owned_by": "cloudflare"},
+				{"id": "cf/nemotron-3", "object": "model", "owned_by": "cloudflare"},
+				// Multi-modal CF models (embeddings / image)
+				{"id": "@cf/baai/bge-base-en-v1.5", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/baai/bge-large-en-v1.5", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/baai/bge-small-en-v1.5", "object": "model", "owned_by": "cloudflare"},
+				{"id": "@cf/black-forest-labs/flux-1-schnell", "object": "model", "owned_by": "cloudflare"},
+			}
 			// Append runtime-registered custom models.
 			if registry != nil {
 				for _, entry := range registry.ListModels() {
@@ -257,7 +283,7 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			// Append runtime-registered combos (v1.4.0).
 			if combos != nil {
 				for _, c := range combos.ListCombos() {
-					models = append(models, gin.H{"id": "combo/" + c.Name, "object": "model", "owned_by": "foxrouters"})
+					models = append(models, gin.H{"id": "combo/" + c.Name, "object": "model", "owned_by": "combo", "type": c.Strategy, "strategy": c.Strategy, "members": c.Models})
 				}
 			}
 			// Anthropic clients (Claude Code, anthropic-sdk-*, etc.) probe
@@ -271,6 +297,20 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 					models[i]["type"] = "model"
 					models[i]["display_name"] = displayNameForModel(id)
 					models[i]["created_at"] = "2025-01-01T00:00:00Z"
+				}
+			}
+			// Filter out models the operator has hidden (v1.7.0).
+			if store != nil {
+				if hidden, err := store.LoadHiddenModels(); err == nil && len(hidden) > 0 {
+					filtered := models[:0]
+					for _, m := range models {
+						id, _ := m["id"].(string)
+						if h, ok := hidden[id]; ok && h.Hidden {
+							continue
+						}
+						filtered = append(filtered, m)
+					}
+					models = filtered
 				}
 			}
 			c.JSON(200, gin.H{"object": "list", "data": models})
@@ -309,10 +349,18 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			body, _ = json.Marshal(bodyMap)
 		}
 
-		// ── Token Saver (RTK input + Caveman/Ponytail output directive) ──
+		// ── Guardrails (soft scan + optional PII redaction) ──
+		if _, reason := guardrails.ScanMessages(bodyMap); reason != "" {
+			slog.Debug("guardrails soft-flag", "reason", reason)
+		}
+		if n := guardrails.RedactPII(bodyMap); n > 0 {
+			body, _ = json.Marshal(bodyMap)
+		}
+
+		// ── Token Saver (RTK input + Headroom + Caveman/Ponytail) ──
 		// RTK compresses tool_result / function_call_output blobs in-place.
-		// Caveman/Ponytail inject a terse-output system directive. Both are
-		// fail-open — never abort the request.
+		// Headroom drops old turns when context is long.
+		// Caveman/Ponytail inject a terse-output system directive.
 		cfg := TokenSaver.Get()
 		if cfg.RTK && RTKEnabled {
 			if stats := rtk.CompressMessages(bodyMap); stats != nil {
@@ -322,10 +370,32 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				body, _ = json.Marshal(bodyMap)
 			}
 		}
+		if cfg.Headroom {
+			if dropped := tokensaver.CompressHeadroom(bodyMap, 10); dropped > 0 {
+				slog.Info("headroom compressed turns", "dropped", dropped)
+				body, _ = json.Marshal(bodyMap)
+			}
+		}
 		if dir := TokenSaver.Directive(); dir != "" {
 			if tokensaver.InjectDirective(bodyMap, dir) {
 				body, _ = json.Marshal(bodyMap)
 			}
+		}
+
+		// ── Semantic cache (non-stream only) ──
+		streamReq := false
+		if s, ok := bodyMap["stream"].(bool); ok && s {
+			streamReq = true
+		}
+		cacheKey := ""
+		if !streamReq && SemanticCache != nil && SemanticCache.Enabled() {
+			cacheKey = cache.KeyFromChat(model, bodyMap)
+			if cached, ok := SemanticCache.Get(cacheKey); ok {
+				c.Header("X-Cache", "HIT")
+				c.Data(200, "application/json", cached)
+				return
+			}
+			c.Header("X-Cache", "MISS")
 		}
 
 		// Custom alias + custom model resolution (runtime-configured).
@@ -570,6 +640,42 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				authMgr.IncrementTokens(fullKey, totalTokens)
 			} else {
 				authMgr.IncrementRequests(fullKey)
+			}
+		}
+
+		// Live quota tracker + semantic cache store (non-stream 2xx)
+		{
+			tokensIn, _ := c.Get("tokens_in")
+			tokensOut, _ := c.Get("tokens_out")
+			totalTokens := int64(toInt(tokensIn) + toInt(tokensOut))
+			var fam quota.Family
+			switch upstreamName {
+			case "grok":
+				fam = quota.Grok
+			case "cloudflare":
+				fam = quota.CF
+			default:
+				fam = quota.CB
+			}
+			costUSD := 0.0
+			if strings.HasPrefix(model, "@cf/") || strings.HasPrefix(model, "cf/") {
+				if n, ok := c.Get("neurons"); ok {
+					costUSD = cost.USDNeurons(toFloatNeurons(n))
+				}
+			} else {
+				costUSD = cost.USD(model, int64(toInt(tokensIn)), int64(toInt(tokensOut)))
+			}
+			if QuotaTracker != nil {
+				QuotaTracker.AddUsage(fam, totalTokens, costUSD)
+			}
+			if cacheKey != "" && c.Writer.Status() == 200 && !streamReq {
+				if rb, ok := c.Get("response_body"); ok {
+					if raw, ok := rb.(json.RawMessage); ok && len(raw) > 0 {
+						SemanticCache.Put(cacheKey, []byte(raw))
+					} else if b, ok := rb.([]byte); ok && len(b) > 0 {
+						SemanticCache.Put(cacheKey, b)
+					}
+				}
 			}
 		}
 

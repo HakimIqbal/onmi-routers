@@ -6,6 +6,8 @@ package main
 
 import (
 	"foxrouters/internal/auth"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // Type aliases keep existing call sites compiling.
@@ -28,8 +30,9 @@ var (
 // newAuthManager preserves the old lowercase constructor name.
 func newAuthManager(s *DBStore) *AuthManager { return auth.NewManager(s) }
 
-// NewSessionStore bridges to auth.NewSessionStore (P3-3).
-func NewSessionStore() *SessionStore { return auth.NewSessionStore() }
+// NewSessionStore bridges to auth.NewSessionStore (P3-3). Pass the Redis client
+// so sessions persist across restarts; nil falls back to in-memory.
+func NewSessionStore(rdb *redis.Client) *SessionStore { return auth.NewSessionStore(rdb) }
 
 // NewAuthManagerForTest returns an empty in-memory Manager (no db) with the
 // provided pre-seeded keys. Package-main tests use this to avoid reaching

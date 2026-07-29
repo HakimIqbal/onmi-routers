@@ -3,7 +3,7 @@
 // Selected when LOG_BACKEND=sqlite (the default). Pure Go, no CGO, works
 // in the alpine runtime image without pulling gcc.
 //
-//   File location: LOG_SQLITE_PATH (default /var/lib/foxrouters/logs.db)
+//   File location: LOG_SQLITE_PATH (default /var/lib/onmi-routers/logs.db)
 //   Retention:     rows older than 90 days pruned by a background goroutine
 //                  once per hour (mirrors the CH TTL semantics)
 //   Concurrency:   sqlite serialises writes; we run WAL mode + a 5s busy
@@ -27,7 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const defaultSQLitePath = "/var/lib/foxrouters/logs.db"
+const defaultSQLitePath = "/var/lib/onmi-routers/logs.db"
 
 // sqliteStore implements LogStore against a local file-backed SQLite DB.
 type sqliteStore struct {
@@ -296,11 +296,13 @@ func (s *sqliteStore) InsertEventBatch(ctx context.Context, batch []AccountEvent
 }
 
 func (s *sqliteStore) GetRequestStats(ctx context.Context, since time.Time) (*RequestStats, error) {
+	// Avg latency = successful requests only (status < 400). Including 503/timeout
+	// rows (~60s client timeout) inflates the dashboard "Avg Latency" card.
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*),
 			COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0),
-			COALESCE(AVG(latency_ms), 0),
+			COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0),
 			COALESCE(SUM(tokens_in), 0),
 			COALESCE(SUM(tokens_out), 0),
 			COALESCE(SUM(cost_usd), 0)
@@ -336,7 +338,7 @@ func (s *sqliteStore) GetModelStats(ctx context.Context, since time.Time, limit 
 			model,
 			COUNT(*) AS total_requests,
 			SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS total_errors,
-			COALESCE(AVG(latency_ms), 0) AS avg_latency,
+			COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency,
 			COALESCE(SUM(tokens_in), 0) AS tokens_in,
 			COALESCE(SUM(tokens_out), 0) AS tokens_out,
 			COALESCE(SUM(cost_usd), 0) AS cost_usd

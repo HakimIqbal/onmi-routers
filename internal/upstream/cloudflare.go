@@ -589,6 +589,80 @@ func cfTransform(body []byte, model string) ([]byte, error) {
 	return json.Marshal(m)
 }
 
+// extractCFText pulls assistant text from a Workers AI stream/JSON chunk.
+// Different models emit different shapes:
+//   - classic: {"response":"hello"}
+//   - OpenAI-compat: {"choices":[{"delta":{"content":"hi"}}]} / message.content
+//   - some: {"result":{"response":"..."}}
+//   - reasoning models may put text in "output" / "text" / content arrays
+func extractCFText(data string) (text string, usage map[string]any) {
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+		return "", nil
+	}
+	if u, ok := raw["usage"].(map[string]any); ok {
+		usage = u
+	}
+	// Top-level "response"
+	if s, ok := raw["response"].(string); ok && s != "" {
+		return s, usage
+	}
+	// Nested result.response / result
+	if res, ok := raw["result"].(map[string]any); ok {
+		if s, ok := res["response"].(string); ok && s != "" {
+			return s, usage
+		}
+		if s, ok := res["text"].(string); ok && s != "" {
+			return s, usage
+		}
+	}
+	if s, ok := raw["text"].(string); ok && s != "" {
+		return s, usage
+	}
+	if s, ok := raw["output"].(string); ok && s != "" {
+		return s, usage
+	}
+	// OpenAI-style choices
+	if choices, ok := raw["choices"].([]any); ok && len(choices) > 0 {
+		if ch, ok := choices[0].(map[string]any); ok {
+			if delta, ok := ch["delta"].(map[string]any); ok {
+				if s, ok := delta["content"].(string); ok && s != "" {
+					return s, usage
+				}
+				// reasoning models sometimes stream reasoning_content only
+				if s, ok := delta["reasoning_content"].(string); ok && s != "" {
+					return s, usage
+				}
+			}
+			if msg, ok := ch["message"].(map[string]any); ok {
+				if s, ok := msg["content"].(string); ok && s != "" {
+					return s, usage
+				}
+				// content as array of parts
+				if parts, ok := msg["content"].([]any); ok {
+					var b strings.Builder
+					for _, p := range parts {
+						if pm, ok := p.(map[string]any); ok {
+							if t, ok := pm["text"].(string); ok {
+								b.WriteString(t)
+							}
+						} else if s, ok := p.(string); ok {
+							b.WriteString(s)
+						}
+					}
+					if b.Len() > 0 {
+						return b.String(), usage
+					}
+				}
+			}
+			if s, ok := ch["text"].(string); ok && s != "" {
+				return s, usage
+			}
+		}
+	}
+	return "", usage
+}
+
 // cfCollectStream reads a Workers AI SSE stream and returns a single OpenAI
 // chat.completion JSON (used for non-stream clients).
 func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
@@ -597,29 +671,62 @@ func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
 	var finish string
 	var usage map[string]any
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
+	// Non-SSE JSON body (some CF models return application/json)
+	ct := resp.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") && !strings.Contains(ct, "event-stream") {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		text, u := extractCFText(string(raw))
+		if u != nil {
+			usage = u
 		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
+		// Also try whole-body OpenAI shape
+		if text == "" {
+			var full map[string]any
+			if json.Unmarshal(raw, &full) == nil {
+				if choices, ok := full["choices"].([]any); ok && len(choices) > 0 {
+					if ch, ok := choices[0].(map[string]any); ok {
+						if msg, ok := ch["message"].(map[string]any); ok {
+							if s, ok := msg["content"].(string); ok {
+								text = s
+							}
+						}
+					}
+				}
+				if u, ok := full["usage"].(map[string]any); ok {
+					usage = u
+				}
+			}
 		}
-		var chunk struct {
-			Response string `json:"response"`
-			Usage    map[string]any `json:"usage"`
-		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
-		}
-		if chunk.Response != "" {
-			content.WriteString(chunk.Response)
-		}
-		if chunk.Usage != nil {
-			usage = chunk.Usage
+		content.WriteString(text)
+	} else {
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				// sometimes CF returns bare JSON lines
+				if strings.HasPrefix(strings.TrimSpace(line), "{") {
+					text, u := extractCFText(line)
+					if text != "" {
+						content.WriteString(text)
+					}
+					if u != nil {
+						usage = u
+					}
+				}
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				break
+			}
+			text, u := extractCFText(data)
+			if text != "" {
+				content.WriteString(text)
+			}
+			if u != nil {
+				usage = u
+			}
 		}
 	}
 	if finish == "" {
@@ -663,55 +770,87 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 	}
 
 	client, proxyID := getClient(upstreamClient, "cloudflare")
-	// Bound each CF attempt so a single slow upstream can't hang the client
-	// beyond 120s (Workers AI can be slow under load; 12k-account fan-out
-	// means one stall must not block the whole request).
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+	// Bound whole request. Per-attempt cap is lower so we can rotate keys.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 90*time.Second)
 	defer cancel()
-	total := km.Len()
+	poolSize := km.Len()
+	// NEVER walk the entire 10k+ farm on one request — that turns 404/bad-model
+	// into a 60s multi-key storm. Cap attempts hard.
+	const maxCFAttempts = 12
+	maxAttempts := maxCFAttempts
+	if poolSize < maxAttempts {
+		maxAttempts = poolSize
+	}
+	if maxAttempts < 1 {
+		c.JSON(503, gin.H{"error": "no cf keys loaded"})
+		c.Set("error_msg", "no cf keys loaded")
+		errJSON, _ := json.Marshal(gin.H{"error": "no cf keys loaded"})
+		c.Set("response_body", json.RawMessage(errJSON))
+		return
+	}
+
 	var lastResp *http.Response
 	var lastKey *CFKey
+	var lastStatus int
+	var lastBodySnippet string
+	var consecutive404 int
+	var sawAuthFail, saw429, saw5xx, sawNetErr bool
 	reqStart := time.Now()
 
-	for attempt := 0; attempt < total; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			break
 		}
 		key, err := km.Next()
 		if err != nil {
+			// Real pool exhaustion (all disabled / daily-exhausted)
+			if lastResp == nil && attempt == 0 {
+				c.JSON(503, gin.H{"error": err.Error()})
+				c.Set("error_msg", err.Error())
+				errJSON, _ := json.Marshal(gin.H{"error": err.Error()})
+				c.Set("response_body", json.RawMessage(errJSON))
+				return
+			}
 			break
 		}
 
+		// Per-key attempt timeout (don't let one hung key burn the whole budget)
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, 12*time.Second)
 		url := fmt.Sprintf("%s/accounts/%s/ai/run/%s", CF_UPSTREAM_URL, key.AccountID, model)
-		req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(transformed))
+		req, _ := http.NewRequestWithContext(attemptCtx, "POST", url, bytes.NewReader(transformed))
 		req.Header.Set("Authorization", key.AuthHeader())
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "text/event-stream")
 
 		resp, err := client.Do(req)
+		attemptCancel()
 		if err != nil {
 			markProxyResult(proxyID, err, 0)
+			sawNetErr = true
+			lastBodySnippet = err.Error()
 			continue
 		}
 		markProxyResult(proxyID, nil, resp.StatusCode)
+		lastStatus = resp.StatusCode
 
 		if resp.StatusCode == 401 || resp.StatusCode == 403 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
-			// 401/403 = dead/invalid token or account banned → permanent.
-			permanentDisableCF(key, fmt.Sprintf("%d %s", resp.StatusCode, truncateLog(string(bodyBytes), 200)))
+			sawAuthFail = true
+			lastBodySnippet = truncateLog(string(bodyBytes), 160)
+			permanentDisableCF(key, fmt.Sprintf("%d %s", resp.StatusCode, lastBodySnippet))
 			continue
 		}
 
 		if resp.StatusCode == 429 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
+			saw429 = true
+			lastBodySnippet = truncateLog(string(bodyBytes), 160)
 			retryAfter := parseRetryAfter(string(bodyBytes), resp.Header.Get("Retry-After"))
 			if retryAfter > 0 {
-				// Rate-limit burst — short cooldown, retry other accounts.
 				cooldownDisableCF(key, fmt.Sprintf("429 rate limited (retry-after %s)", retryAfter))
 			} else {
-				// Daily quota exhausted — skip until UTC midnight.
 				cooldownDisableCF(key, "429 daily-quota exhausted, skip until midnight")
 			}
 			continue
@@ -720,34 +859,70 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
-			// 404 NotFound ("model does not exist") is a model/plan issue,
-			// NOT a key-health problem — never disable the key for it. Just
-			// skip this key and let the request fail or fall to the next.
-			if resp.StatusCode == 404 && bytes.Contains(bodyBytes, []byte("NotFoundError")) {
-				slog.Debug("cf 404 model not found (skip, no disable)", "module", "cf", "account", key.AccountID, "body", truncateLog(string(bodyBytes), 120))
+			lastBodySnippet = truncateLog(string(bodyBytes), 160)
+			// 404 model-not-found is model availability, not key health.
+			// Fail fast after a few consecutive 404s — don't burn the farm.
+			if resp.StatusCode == 404 {
+				consecutive404++
+				if consecutive404 >= 3 {
+					msg := fmt.Sprintf("model not available on CF pool: %s (404 after %d accounts)", originalModel, consecutive404)
+					c.JSON(404, gin.H{"error": msg, "model": originalModel})
+					c.Set("error_msg", msg)
+					errJSON, _ := json.Marshal(gin.H{"error": msg})
+					c.Set("response_body", json.RawMessage(errJSON))
+					hc.CF.RecordRequest(time.Since(reqStart), fmt.Errorf("model 404"))
+					return
+				}
 				continue
 			}
-			// Other 4xx (400/401/403/429) = bad request / auth / quota.
-			// Cooldown-disable so we don't hammer a broken key.
-			cooldownDisableCF(key, fmt.Sprintf("4xx status=%d body=%s", resp.StatusCode, truncateLog(string(bodyBytes), 200)))
+			// Other 4xx → short cooldown on that key
+			cooldownDisableCF(key, fmt.Sprintf("4xx status=%d body=%s", resp.StatusCode, lastBodySnippet))
 			continue
 		}
 
 		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 			resp.Body.Close()
+			saw5xx = true
+			lastBodySnippet = truncateLog(string(bodyBytes), 120)
 			hc.CF.RecordRequest(time.Since(reqStart), fmt.Errorf("upstream %d", resp.StatusCode))
 			continue
 		}
 
+		// Success path
 		lastResp = resp
 		lastKey = key
 		break
 	}
 
 	if lastResp == nil {
-		c.JSON(503, gin.H{"error": "all cf keys disabled or daily-exhausted"})
-		c.Set("error_msg", "all cf keys disabled or daily-exhausted")
-		errJSON, _ := json.Marshal(gin.H{"error": "all cf keys disabled or daily-exhausted"})
+		// Build an honest error — do NOT always claim "all keys disabled".
+		msg := "cf upstream failed"
+		switch {
+		case consecutive404 > 0:
+			msg = fmt.Sprintf("model not available on sampled CF accounts: %s (404×%d)", originalModel, consecutive404)
+			c.JSON(404, gin.H{"error": msg, "model": originalModel})
+		case saw429 && !sawAuthFail:
+			msg = "cf rate-limited / daily quota on sampled keys"
+			c.JSON(429, gin.H{"error": msg})
+		case sawAuthFail && !saw429 && !saw5xx:
+			msg = "cf auth failed on sampled keys (401/403)"
+			c.JSON(503, gin.H{"error": msg})
+		case saw5xx:
+			msg = fmt.Sprintf("cf upstream 5xx after %d attempts", maxAttempts)
+			c.JSON(502, gin.H{"error": msg})
+		case sawNetErr:
+			msg = fmt.Sprintf("cf network errors after %d attempts: %s", maxAttempts, truncateLog(lastBodySnippet, 80))
+			c.JSON(502, gin.H{"error": msg})
+		case lastStatus > 0:
+			msg = fmt.Sprintf("cf no healthy response after %d attempts (last_status=%d)", maxAttempts, lastStatus)
+			c.JSON(503, gin.H{"error": msg})
+		default:
+			msg = "all cf keys disabled or daily-exhausted"
+			c.JSON(503, gin.H{"error": msg})
+		}
+		c.Set("error_msg", msg)
+		errJSON, _ := json.Marshal(gin.H{"error": msg, "last_status": lastStatus})
 		c.Set("response_body", json.RawMessage(errJSON))
 		return
 	}
@@ -790,38 +965,33 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 				}
 				break
 			}
-			var cfChunk struct {
-				Response string         `json:"response"`
-				Usage    map[string]any `json:"usage"`
-			}
-			if json.Unmarshal([]byte(data), &cfChunk) == nil {
-				if cfChunk.Response != "" {
-					streamContent.WriteString(cfChunk.Response)
-					openaiChunk := gin.H{
-						"id":      "chatcmpl-" + time.Now().Format("20060102150405"),
-						"object":  "chat.completion.chunk",
-						"created": time.Now().Unix(),
-						"model":   originalModel,
-						"choices": []gin.H{{
-							"index": 0,
-							"delta": gin.H{"role": "assistant", "content": cfChunk.Response},
-						}},
-					}
-					if b, err := json.Marshal(openaiChunk); err == nil {
-						fmt.Fprintf(c.Writer, "data: %s\n\n", b)
-					}
+			text, usage := extractCFText(data)
+			if text != "" {
+				streamContent.WriteString(text)
+				openaiChunk := gin.H{
+					"id":      "chatcmpl-" + time.Now().Format("20060102150405"),
+					"object":  "chat.completion.chunk",
+					"created": time.Now().Unix(),
+					"model":   originalModel,
+					"choices": []gin.H{{
+						"index": 0,
+						"delta": gin.H{"role": "assistant", "content": text},
+					}},
 				}
-				if cfChunk.Usage != nil {
-					if b, err := json.Marshal(gin.H{
-						"id":      "chatcmpl-" + time.Now().Format("20060102150405"),
-						"object":  "chat.completion.chunk",
-						"created": time.Now().Unix(),
-						"model":   originalModel,
-						"choices": []gin.H{{"index": 0, "delta": gin.H{}, "finish_reason": "stop"}},
-						"usage":   cfChunk.Usage,
-					}); err == nil {
-						fmt.Fprintf(c.Writer, "data: %s\n\n", b)
-					}
+				if b, err := json.Marshal(openaiChunk); err == nil {
+					fmt.Fprintf(c.Writer, "data: %s\n\n", b)
+				}
+			}
+			if usage != nil {
+				if b, err := json.Marshal(gin.H{
+					"id":      "chatcmpl-" + time.Now().Format("20060102150405"),
+					"object":  "chat.completion.chunk",
+					"created": time.Now().Unix(),
+					"model":   originalModel,
+					"choices": []gin.H{{"index": 0, "delta": gin.H{}, "finish_reason": "stop"}},
+					"usage":   usage,
+				}); err == nil {
+					fmt.Fprintf(c.Writer, "data: %s\n\n", b)
 				}
 			}
 			if flusher != nil {

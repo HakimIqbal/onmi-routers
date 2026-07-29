@@ -247,7 +247,7 @@ func (c *clickhouseStore) GetRequestStats(ctx context.Context, since time.Time) 
 		SELECT
 			count(),
 			countIf(status_code >= 400),
-			ifNull(avg(latency_ms), 0),
+			ifNull(avgIf(latency_ms, status_code < 400), 0),
 			ifNull(sum(tokens_in), 0),
 			ifNull(sum(tokens_out), 0),
 			ifNull(sum(cost_usd), 0)
@@ -280,7 +280,7 @@ func (c *clickhouseStore) GetModelStats(ctx context.Context, since time.Time, li
 			model,
 			count() AS total_requests,
 			countIf(status_code >= 400) AS total_errors,
-			ifNull(avg(latency_ms), 0) AS avg_latency,
+			ifNull(avgIf(latency_ms, status_code < 400), 0) AS avg_latency,
 			ifNull(sum(tokens_in), 0) AS tokens_in,
 			ifNull(sum(tokens_out), 0) AS tokens_out,
 			ifNull(sum(cost_usd), 0) AS cost_usd

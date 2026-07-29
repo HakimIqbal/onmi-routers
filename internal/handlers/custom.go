@@ -16,10 +16,17 @@ import (
 
 // customModelInput is the wire schema for POST /api/models/custom.
 type customModelInput struct {
-	ID        string `json:"id"`
-	Upstream  string `json:"upstream"`
-	ModelName string `json:"model_name"`
-	OwnedBy   string `json:"owned_by"`
+	ID           string   `json:"id"`
+	Upstream     string   `json:"upstream"`
+	ModelName    string   `json:"model_name"`
+	OwnedBy      string   `json:"owned_by"`
+	Capabilities []string `json:"capabilities"`
+}
+
+// hiddenModelInput is the wire schema for POST /api/models/hidden.
+type hiddenModelInput struct {
+	ID     string `json:"id"`
+	Hidden bool   `json:"hidden"`
 }
 
 // aliasInput is the wire schema for POST /api/aliases.
@@ -52,9 +59,10 @@ func HandleAddCustomModel(reg *proxy.CustomRegistry) gin.HandlerFunc {
 			return
 		}
 		cm := db.CustomModel{
-			Upstream:  in.Upstream,
-			ModelName: in.ModelName,
-			OwnedBy:   in.OwnedBy,
+			Upstream:     in.Upstream,
+			ModelName:    in.ModelName,
+			OwnedBy:      in.OwnedBy,
+			Capabilities: in.Capabilities,
 		}
 		if err := reg.AddModel(in.ID, cm); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
@@ -137,5 +145,60 @@ func HandleDeleteAlias(reg *proxy.CustomRegistry) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, gin.H{"ok": true, "alias": alias})
+	}
+}
+
+// HandleListHiddenModels: GET /api/models/hidden → { hidden: {id: {hidden, hidden_at}} }.
+func HandleListHiddenModels(store *db.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if store == nil {
+			c.JSON(500, gin.H{"error": "store not initialised"})
+			return
+		}
+		hidden, err := store.LoadHiddenModels()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		out := map[string]db.HiddenModel{}
+		for id, h := range hidden {
+			if h.Hidden {
+				out[id] = h
+			}
+		}
+		c.JSON(200, gin.H{"hidden": out})
+	}
+}
+
+// HandleSetHiddenModel: POST /api/models/hidden { id, hidden }.
+// hidden=true hides the model from /v1/models; hidden=false restores it.
+func HandleSetHiddenModel(store *db.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if store == nil {
+			c.JSON(500, gin.H{"error": "store not initialised"})
+			return
+		}
+		var in hiddenModelInput
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if in.ID == "" {
+			c.JSON(400, gin.H{"error": "id required"})
+			return
+		}
+		if !in.Hidden {
+			if err := store.DeleteHiddenModel(in.ID); err != nil {
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, gin.H{"ok": true, "id": in.ID, "hidden": false})
+			return
+		}
+		if err := store.SaveHiddenModel(db.HiddenModel{ID: in.ID, Hidden: true}); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"ok": true, "id": in.ID, "hidden": true})
 	}
 }
