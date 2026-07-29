@@ -181,7 +181,7 @@
 .page-head p { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.5; }
 .page-head .page-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-/* Token Saver — single compact card (9Router style): top + horizontally centered */
+/* Token Saver — 9Router Compact Style */
 #page-tokensaver.active {
   display: flex;
   flex-direction: column;
@@ -192,22 +192,37 @@
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px 16px;
-  max-width: 720px;
+  padding: 24px;
+  max-width: 600px;
   width: 100%;
   margin: 0 auto;
+  box-shadow: var(--shadow-card);
 }
-.ts-single-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.ts-single-head svg { width: 26px; height: 26px; color: var(--brand); flex-shrink: 0; }
-.ts-single-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
-.ts-single-sub { font-size: 12.5px; color: var(--text-tertiary); margin-top: 2px; }
-.ts-toggle-list { display: flex; flex-direction: column; }
-.ts-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); }
-.ts-toggle-row:first-child { border-top: none; }
-.ts-toggle-meta { min-width: 0; }
-.ts-toggle-name { font-size: 14px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 7px; }
-.ts-toggle-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 3px; line-height: 1.45; }
-.ts-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--brand); background: var(--brand-subtle); border: 1px solid var(--brand); border-radius: 5px; padding: 1px 6px; }
+.ts-single-head { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 4px; 
+  margin-bottom: 24px; 
+  text-align: center;
+}
+.ts-single-title { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+.ts-single-sub { font-size: 13px; color: var(--text-tertiary); line-height: 1.5; }
+.ts-toggle-list { display: flex; flex-direction: column; gap: 4px; }
+.ts-toggle-row { 
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between; 
+  gap: 16px; 
+  padding: 14px 16px; 
+  border-radius: var(--radius-sm);
+  transition: background var(--tc);
+  border: 1px solid transparent;
+}
+.ts-toggle-row:hover { background: var(--bg-hover); border-color: var(--border); }
+.ts-toggle-meta { flex: 1; }
+.ts-toggle-name { font-size: 14px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+.ts-toggle-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.4; }
+.ts-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--brand); background: var(--brand-subtle); border: 1px solid var(--brand); border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
 
 /* Token Saver */
 .ts-bar { height: 10px; border-radius: 999px; background: var(--bg-input); overflow: hidden; margin-top: 6px; border: 1px solid var(--border); }
@@ -2825,14 +2840,13 @@ input:focus, select:focus, textarea:focus {
 
   <!-- ══════════════════ TOKEN SAVER ════════════════ -->
   <div class="page" id="page-tokensaver">
-    <div class="ts-card-single">
-      <div class="ts-single-head">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 13 9 20 9"/><path d="M13 2L5 14h7l-1 8 9-12h-7z"/></svg>
-        <div>
-          <div class="ts-single-title">Token Saver</div>
-          <div class="ts-single-sub">Compress prompts and outputs to save tokens</div>
-        </div>
+    <div class="page-head">
+      <div class="page-head-text">
+        <h2>Token Saver</h2>
+        <p>Compress prompts and outputs to save tokens and reduce costs.</p>
       </div>
+    </div>
+    <div class="ts-card-single">
       <div class="ts-toggle-list">
         <div class="ts-toggle-row">
           <div class="ts-toggle-meta">
