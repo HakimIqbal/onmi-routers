@@ -33,7 +33,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TokenSaver is the shared Token Saver config (RTK input + Caveman/Ponytail
+// TokenSaver is the shared Token Saver config (RTK input + Caveman/CodeStyle
 // output directives). Set via main.go (from Redis/env). Default: RTK on.
 var TokenSaver = tokensaver.DefaultConfig()
 
@@ -357,10 +357,10 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			body, _ = json.Marshal(bodyMap)
 		}
 
-		// ── Token Saver (RTK input + Headroom + Caveman/Ponytail) ──
+		// ── Token Saver (RTK input + Headroom + Caveman/CodeStyle) ──
 		// RTK compresses tool_result / function_call_output blobs in-place.
 		// Headroom drops old turns when context is long.
-		// Caveman/Ponytail inject a terse-output system directive.
+		// Caveman/CodeStyle inject a terse-output system directive.
 		cfg := TokenSaver.Get()
 		if cfg.RTK && RTKEnabled {
 			if stats := rtk.CompressMessages(bodyMap); stats != nil {

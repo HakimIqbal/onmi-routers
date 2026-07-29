@@ -12,7 +12,7 @@ import (
 )
 
 // ============================================================================
-// TOKEN SAVER (RTK + Caveman + Ponytail)
+// TOKEN SAVER (RTK + Caveman L1/L2/L3 + CodeStyle)
 // ============================================================================
 
 // handleGetTokenSaver returns the current Token Saver config.
@@ -26,10 +26,11 @@ func handleGetTokenSaver() gin.HandlerFunc {
 func handleSetTokenSaver() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			RTK      *bool `json:"rtk"`
-			Headroom *bool `json:"headroom"`
-			Caveman  *bool `json:"caveman"`
-			Ponytail *bool `json:"ponytail"`
+			RTK          *bool `json:"rtk"`
+			Headroom     *bool `json:"headroom"`
+			Caveman      *bool `json:"caveman"`
+			CavemanLevel *int  `json:"caveman_level"`
+			CodeStyle    *bool `json:"code_style"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "invalid body"})
@@ -45,10 +46,13 @@ func handleSetTokenSaver() gin.HandlerFunc {
 		if req.Caveman != nil {
 			cur.Caveman = *req.Caveman
 		}
-		if req.Ponytail != nil {
-			cur.Ponytail = *req.Ponytail
+		if req.CavemanLevel != nil {
+			cur.CavemanLevel = *req.CavemanLevel
 		}
-		TokenSaverCfg.Set(cur.RTK, cur.Headroom, cur.Caveman, cur.Ponytail)
+		if req.CodeStyle != nil {
+			cur.CodeStyle = *req.CodeStyle
+		}
+		TokenSaverCfg.Set(cur.RTK, cur.Headroom, cur.Caveman, cur.CavemanLevel, cur.CodeStyle)
 		// Sync into proxy hot-path global.
 		proxy.TokenSaver = TokenSaverCfg
 		// Persist to Redis.
@@ -58,9 +62,10 @@ func handleSetTokenSaver() gin.HandlerFunc {
 		c.JSON(200, gin.H{
 			"rtk":      cur.RTK,
 			"headroom": cur.Headroom,
-			"caveman":  cur.Caveman,
-			"ponytail": cur.Ponytail,
-		})
+			"caveman":       cur.Caveman,
+			"caveman_level": cur.CavemanLevel,
+			"code_style":    cur.CodeStyle,
+			})
 	}
 }
 

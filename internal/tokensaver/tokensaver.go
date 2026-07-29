@@ -20,36 +20,36 @@ import (
 type Config struct {
 	mu sync.RWMutex
 
-	RTK      bool `json:"rtk"`      // input tool_result compression (see internal/rtk)
-	Headroom bool `json:"headroom"` // context/history compression directive
-	Caveman  bool `json:"caveman"`  // terse output directive
-	Ponytail bool `json:"ponytail"` // YAGNI-first code style directive
-	// CavemanLevel / PonytailLevel reserved for future granularity.
+	RTK       bool `json:"rtk"`        // input tool_result compression (see internal/rtk)
+	Headroom  bool `json:"headroom"`   // context/history compression directive
+	Caveman   bool `json:"caveman"`    // terse output directive
+	CavemanLevel int `json:"caveman_level"` // 1=light, 2=standard, 3=aggressive (default 2)
+	CodeStyle bool `json:"code_style"` // YAGNI-first code style directive (renamed from Ponytail)
 }
 
 // DefaultConfig returns RTK on, others off (RTK is the lowest-risk win).
 func DefaultConfig() *Config {
-	return &Config{RTK: true, Headroom: false, Caveman: false, Ponytail: false}
+	return &Config{RTK: true, Headroom: false, Caveman: false, CavemanLevel: 2, CodeStyle: false}
 }
 
 // Get returns a copy-safe snapshot.
 func (c *Config) Get() Config {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return Config{RTK: c.RTK, Headroom: c.Headroom, Caveman: c.Caveman, Ponytail: c.Ponytail}
+	return Config{RTK: c.RTK, Headroom: c.Headroom, Caveman: c.Caveman, CavemanLevel: c.CavemanLevel, CodeStyle: c.CodeStyle}
 }
 
 // Set updates the config (used by admin API + Redis load).
-func (c *Config) Set(r bool, headroom bool, caveman bool, pony bool) {
+func (c *Config) Set(r bool, headroom bool, caveman bool, cavemanLevel int, codeStyle bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.RTK, c.Headroom, c.Caveman, c.Ponytail = r, headroom, caveman, pony
+	c.RTK, c.Headroom, c.Caveman, c.CavemanLevel, c.CodeStyle = r, headroom, caveman, cavemanLevel, codeStyle
 }
 
 // AnyEnabled reports whether any saver is active.
 func (c *Config) AnyEnabled() bool {
 	s := c.Get()
-	return s.RTK || s.Headroom || s.Caveman || s.Ponytail
+	return s.RTK || s.Headroom || s.Caveman || s.CodeStyle
 }
 
 // Directive builds the system-message suffix to inject for output/context savers.
@@ -62,28 +62,46 @@ func (c *Config) Directive() string {
 		b.WriteString("\n\n")
 	}
 	if s.Caveman {
-		b.WriteString(cavemanDirective)
+		b.WriteString(cavemanDirectiveByLevel(s.CavemanLevel))
 		b.WriteString("\n\n")
 	}
-	if s.Ponytail {
+	if s.CodeStyle {
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(ponytailDirective)
+		b.WriteString(codeStyleDirective)
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// cavemanDirectiveByLevel returns the caveman directive at the requested intensity.
+func cavemanDirectiveByLevel(level int) string {
+	switch level {
+	case 1:
+		return cavemanDirectiveLight
+	case 3:
+		return cavemanDirectiveAggressive
+	default:
+		return cavemanDirective
+	}
 }
 
 // cavemanDirective — terse, substance-preserving output (adapted from
 // JuliusBrussee/caveman). Saves up to ~65% output tokens.
 const cavemanDirective = `Reply in terse "caveman speak": use fewest words, drop articles and polite fluff, keep technical substance. Example: instead of "I will now create the helper function that validates the input", say "make validate() input check". Never omit code, paths, values, or the actual fix.`
 
+// cavemanDirectiveLight — lighter caveman mode (level 1). Saves ~40% output tokens.
+const cavemanDirectiveLight = `Reply tersely: skip greetings, summaries, and "let me know if you need anything". Get to the point in 1-2 sentences. Keep code, paths, and values intact.`
+
+// cavemanDirectiveAggressive — aggressive caveman mode (level 3). Saves ~80% output tokens.
+const cavemanDirectiveAggressive = `MAXIMUM TERSeness. One sentence or less. No articles, no explanations, no sign-offs. Only raw code, commands, paths, or values. If you can't say it in 5 words, it doesn't need saying.`
+
 // headroomDirective — compress repeated context / prior turns to save input+output tokens.
 const headroomDirective = `[CONTEXT-COMPRESS] Keep prior turns tight: reference established context instead of repeating it, drop redundant restatements, and avoid echoing the user's request back. Reuse shorthand for variables/paths already introduced. This saves context tokens without losing information.`
 
-// ponytailDirective — lazy senior-dev YAGNI code style (adapted from
-// DietrichGebert/ponytail). Fewer tokens, shorter diffs, no over-engineering.
-const ponytailDirective = `Code like a lazy senior engineer: minimal diff, no speculative abstraction, no unused helpers, reuse existing utilities. Apply YAGNI: implement exactly what's asked, skip frameworks/config not needed. Prefer small, working changes over clever generality.`
+// codeStyleDirective — lazy senior-dev YAGNI code style (renamed from Ponytail).
+// Fewer tokens, shorter diffs, no over-engineering.
+const codeStyleDirective = `Code like a lazy senior engineer: minimal diff, no speculative abstraction, no unused helpers, reuse existing utilities. Apply YAGNI: implement exactly what's asked, skip frameworks/config not needed. Prefer small, working changes over clever generality.`
 
 // InjectDirective appends the output-saver directive to the system message
 // of an OpenAI-style chat body (map with "messages"). Returns true if it
@@ -140,5 +158,8 @@ func (c *Config) FromJSON(s string) {
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
 		return
 	}
-	c.Set(v.RTK, v.Headroom, v.Caveman, v.Ponytail)
+	if v.CavemanLevel == 0 {
+		v.CavemanLevel = 2
+	}
+	c.Set(v.RTK, v.Headroom, v.Caveman, v.CavemanLevel, v.CodeStyle)
 }

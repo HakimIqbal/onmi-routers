@@ -150,28 +150,30 @@ func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
 	case "fill_first", "priority":
 		return healthy[0], true
 	case "auto":
-		// 4-tier free-first drain when free CF is present later in list;
-		// prefer first healthy that is not OPEN. Prefer CF free models when
-		// subscription head is OPEN (already filtered). If head is CF and
-		// later models exist, still pick head (ordered sub→cheap→free).
-		// When all remaining are CF, prefer cheapest alias first among healthy.
-		best := healthy[0]
-		// Prefer models with lower estimated cost if multiple same-tier
-		// (keeps free/cheap CF preferred when higher tiers all OPEN).
-		bestCost := cost.USD(best, 1_000_000, 1_000_000)
-		// Only re-rank among CF free tier when first is also CF
-		if strings.HasPrefix(best, "@cf/") || strings.HasPrefix(best, "cf/") {
-			for _, m := range healthy[1:] {
-				if !(strings.HasPrefix(m, "@cf/") || strings.HasPrefix(m, "cf/")) {
-					continue
-				}
-				if s := cost.USD(m, 1_000_000, 1_000_000); s < bestCost {
-					bestCost = s
-					best = m
+		// 3-tier scoring: Subscription -> Cheap -> Free
+		// Tier 1: Non-CF (usually paid/sub)
+		// Tier 2: CF (paid/cheap)
+		// Tier 3: CF (free)
+		
+		var tier1, tier2, tier3 []string
+		for _, m := range healthy {
+			isCF := strings.HasPrefix(m, "@cf/") || strings.HasPrefix(m, "cf/")
+			if !isCF {
+				tier1 = append(tier1, m)
+			} else {
+				// Use cost.USD to distinguish between paid CF and free CF
+				if cost.USD(m, 1, 1) > 0 {
+					tier2 = append(tier2, m)
+				} else {
+					tier3 = append(tier3, m)
 				}
 			}
 		}
-		return best, true
+		
+		if len(tier1) > 0 { return tier1[0], true }
+		if len(tier2) > 0 { return tier2[0], true }
+		if len(tier3) > 0 { return tier3[0], true }
+		return healthy[0], true
 	case "random":
 		n := fallbackCounter(c.Name + ":rnd")
 		if n < 0 {

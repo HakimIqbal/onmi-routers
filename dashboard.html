@@ -2865,16 +2865,23 @@ input:focus, select:focus, textarea:focus {
         <div class="ts-toggle-row">
           <div class="ts-toggle-meta">
             <div class="ts-toggle-name">Compress LLM output <span class="ts-tag">Caveman</span></div>
-            <div class="ts-toggle-desc">Injects terse-output directive → up to ~65% output tokens per response.</div>
+            <div class="ts-toggle-desc">Injects terse-output directive. Level 1: Light, 2: Std, 3: Aggressive.</div>
           </div>
-          <label class="switch"><input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
+          <div style="display:flex; align-items:center; gap:12px">
+            <select id="tsCavemanLvl" onchange="saveTokenSaver()" style="background:var(--bg-input); color:var(--text-secondary); border:1px solid var(--border); border-radius:4px; font-size:11px; padding:2px 4px; cursor:pointer">
+              <option value="1">L1</option>
+              <option value="2" selected>L2</option>
+              <option value="3">L3</option>
+            </select>
+            <label class="switch"><input type="checkbox" id="tsCaveman" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
+          </div>
         </div>
         <div class="ts-toggle-row">
           <div class="ts-toggle-meta">
-            <div class="ts-toggle-name">Lazy senior dev <span class="ts-tag">Ponytail</span></div>
+            <div class="ts-toggle-name">Lazy senior dev <span class="ts-tag">CodeStyle</span></div>
             <div class="ts-toggle-desc">YAGNI code style → minimal diff, shorter responses.</div>
           </div>
-          <label class="switch"><input type="checkbox" id="tsPonytail" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
+          <label class="switch"><input type="checkbox" id="tsCodeStyle" onchange="saveTokenSaver()"><span class="track"></span><span class="thumb"></span></label>
         </div>
       </div>
       <div id="tsStatus" style="font-size:12.5px;color:var(--green);margin-top:4px;min-height:16px"></div>
@@ -2962,6 +2969,29 @@ input:focus, select:focus, textarea:focus {
           <span class="head-meta">click a row for full JSON</span>
         </div>
         <div id="anLogs" style="padding:4px 0 8px"></div>
+      </div>
+
+      <!-- Provider Quota Overview (9Router-style) -->
+      <div class="panel" style="margin:0">
+        <div class="panel-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          <h3>Provider Quota Overview</h3>
+          <span class="head-meta" id="quotaMeta">live per-provider usage</span>
+        </div>
+        <div id="quotaChart" class="chart-grid" style="padding:14px">
+          <div class="chart-box">
+            <h4>Grok Accounts</h4>
+            <canvas id="quotaGrok"></canvas>
+          </div>
+          <div class="chart-box">
+            <h4>CodeBuddy Keys</h4>
+            <canvas id="quotaCB"></canvas>
+          </div>
+          <div class="chart-box">
+            <h4>Cloudflare Accounts</h4>
+            <canvas id="quotaCF"></canvas>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -6729,7 +6759,9 @@ async function loadTokenSaver() {
     document.getElementById('tsRtk').checked = !!c.rtk;
     document.getElementById('tsHeadroom').checked = !!c.headroom;
     document.getElementById('tsCaveman').checked = !!c.caveman;
-    document.getElementById('tsPonytail').checked = !!c.ponytail;
+    var lvl = parseInt(c.caveman_level || 2);
+    document.getElementById('tsCavemanLvl').value = lvl;
+    document.getElementById('tsCodeStyle').checked = !!c.code_style;
   } catch (e) { /* ignore */ }
 }
 
@@ -6738,7 +6770,8 @@ async function saveTokenSaver() {
     rtk: document.getElementById('tsRtk').checked,
     headroom: document.getElementById('tsHeadroom').checked,
     caveman: document.getElementById('tsCaveman').checked,
-    ponytail: document.getElementById('tsPonytail').checked
+    caveman_level: parseInt(document.getElementById('tsCavemanLvl').value),
+    code_style: document.getElementById('tsCodeStyle').checked
   });
   try {
     await apiFetch('/api/tokensaver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
@@ -6773,6 +6806,7 @@ async function loadAnalyticsStats() {
     document.getElementById('anTokensSub').textContent = 'in ' + (h.total_tokens_in||0).toLocaleString() + ' · out ' + (h.total_tokens_out||0).toLocaleString();
     drawReqChart(h.time_series || buildDummySeries(h.total_requests||0, _analyticsHours));
     drawTokChart(h.total_tokens_in||0, h.total_tokens_out||0);
+    updateQuotaCharts();
     // Enrich cost card with live quota/cache if available
     try {
       var q = await apiFetch('/api/quota');
@@ -7003,6 +7037,92 @@ function buildDummySeries(total, hours) {
     out.push({ t: Date.now() - (n-1-i)*3600*1000, requests: Math.round(per * (0.6 + Math.random()*0.8)) });
   }
   return out;
+}
+
+
+function drawQuotaChart(canvasId, label, data, color) {
+  var cv = document.getElementById(canvasId);
+  if (!cv) return;
+  var dpr = window.devicePixelRatio || 1;
+  var w = cv.clientWidth || 300, hgt = 180;
+  cv.width = w * dpr; cv.height = hgt * dpr;
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,w,hgt);
+  
+  if (!data || data.length === 0) {
+    ctx.fillStyle = getCss('--text-tertiary'); ctx.font = '12px monospace'; ctx.fillText('no data', 12, hgt/2); return;
+  }
+
+  var max = Math.max(...data.map(d => d.used || 0), ...data.map(d => d.limit || 0)) || 1;
+  var pad = 30, bw = (w - pad*2) / data.length;
+  
+  // Y-axis labels
+  ctx.fillStyle = getCss('--text-tertiary'); ctx.font = '10px monospace';
+  ctx.fillText(Math.round(max).toLocaleString(), 5, 14);
+  ctx.fillText('0', 5, hgt-pad+12);
+
+  data.forEach(function(d, i) {
+    var x = pad + i*bw + bw*0.1;
+    var limitH = (hgt-pad*2) * (d.limit / max);
+    var usedH = (hgt-pad*2) * (d.used / max);
+    var yLimit = hgt-pad - limitH;
+    var yUsed = hgt-pad - usedH;
+
+    // Limit bar (background)
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    roundRect(ctx, x, yLimit, bw*0.8, limitH, 3); ctx.fill();
+
+    // Used bar (foreground)
+    ctx.fillStyle = color;
+    roundRect(ctx, x, yUsed, bw*0.8, usedH, 3); ctx.fill();
+
+    // Label
+    ctx.fillStyle = getCss('--text-secondary');
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.name.slice(0,8), x + bw*0.4, hgt-pad+15);
+  });
+  ctx.textAlign = 'left';
+}
+
+async function updateQuotaCharts() {
+  try {
+    var q = await apiFetch('/api/quota');
+    if (!q || !q.quota) return;
+    
+    var pools = q.quota;
+    
+    // Grok
+    var grokData = [];
+    if (pools.grok) {
+      // Assuming pools.grok is an array or we can derive it. 
+      // Based on main.go, QuotaTracker.All() returns a map.
+      // We need to handle the map structure.
+      Object.entries(pools.grok || {}).forEach(([name, s]) => {
+        grokData.push({ name: name, used: s.used || 0, limit: s.limit || 0 });
+      });
+    }
+    drawQuotaChart('quotaGrok', 'Grok', grokData, getCss('--brand-violet'));
+
+    // CodeBuddy
+    var cbData = [];
+    if (pools.codebuddy) {
+      Object.entries(pools.codebuddy || {}).forEach(([name, s]) => {
+        cbData.push({ name: name, used: s.used || 0, limit: s.limit || 0 });
+      });
+    }
+    drawQuotaChart('quotaCB', 'CodeBuddy', cbData, getCss('--brand'));
+
+    // Cloudflare
+    var cfData = [];
+    if (pools.cloudflare) {
+      Object.entries(pools.cloudflare || {}).forEach(([name, s]) => {
+        cfData.push({ name: name, used: s.used || 0, limit: s.limit || 0 });
+      });
+    }
+    drawQuotaChart('quotaCF', 'Cloudflare', cfData, '#f38020');
+
+  } catch (e) { console.error('Quota chart error:', e); }
 }
 
 function drawReqChart(series) {

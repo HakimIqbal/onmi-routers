@@ -87,7 +87,7 @@ var Version = "dev"
 // "Live server console" panel. Initialized in init().
 var LiveConsole = console.New(500)
 
-// TokenSaverCfg is the shared Token Saver config (RTK + Caveman + Ponytail).
+// TokenSaverCfg is the shared Token Saver config (RTK + Caveman + CodeStyle).
 // Loaded from Redis (key "tokensaver:cfg") at startup if present.
 var TokenSaverCfg = tokensaver.DefaultConfig()
 
@@ -363,7 +363,7 @@ func main() {
 	r.POST("/api/tunnel/restart", csrfGuard(), adminAuth, handleTunnelRestart(tunnelMgr))
 	r.GET("/api/tailscale/status", adminAuth, handleTailscaleStatus())
 
-	// ── Token Saver (RTK + Caveman + Ponytail) admin API ──
+	// ── Token Saver (RTK + Caveman + CodeStyle) admin API ──
 	r.GET("/api/tokensaver", adminAuth, handleGetTokenSaver())
 	r.POST("/api/tokensaver", csrfGuard(), adminAuth, handleSetTokenSaver())
 
@@ -522,7 +522,8 @@ func main() {
 	}
 	proxy.TokenSaver = TokenSaverCfg
 	slog.Info("token saver active", "rtk", TokenSaverCfg.Get().RTK,
-		"caveman", TokenSaverCfg.Get().Caveman, "ponytail", TokenSaverCfg.Get().Ponytail)
+		"caveman", TokenSaverCfg.Get().Caveman, "caveman_level", TokenSaverCfg.Get().CavemanLevel,
+		"code_style", TokenSaverCfg.Get().CodeStyle)
 
 	// Graceful shutdown: drain in-flight requests, flush async DB logs.
 	// Timeouts: ReadHeaderTimeout protects against Slowloris; WriteTimeout
