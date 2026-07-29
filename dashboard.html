@@ -848,6 +848,16 @@ body {
 
 /* Combo strategy badges */
 .strat-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+/* Ops Surface (Analytics page) */
+.ops-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0 0; }
+@media(max-width:700px){ .ops-grid { grid-template-columns:1fr; } }
+.ts-toggle-card { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:var(--bg-deep); border:1px solid var(--border); border-radius:var(--radius-sm); gap:8px; }
+.ts-toggle-label { display:flex; flex-direction:column; gap:2px; }
+.ts-toggle-label b { font-size:12px; color:var(--text-primary); }
+.ts-toggle-label span { font-size:10px; color:var(--text-tertiary); }
+.btn-cs { padding:6px 8px; font-size:11px; font-family:var(--mono); background:var(--bg-deep); border:1px solid var(--border-strong); border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; transition:all .15s; }
+.btn-cs:hover { border-color:var(--brand); color:var(--brand); }
+.btn-cs.active { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
 .strat-fb    { background:rgba(99,102,241,.15); color:#818cf8; }
 .strat-rr    { background:rgba(6,182,212,.15);  color:#22d3ee; }
 .strat-lat   { background:rgba(245,158,11,.15); color:#fbbf24; }
@@ -2937,6 +2947,68 @@ input:focus, select:focus, textarea:focus {
         <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value" id="anTokens">—</div><div class="stat-sub" id="anTokensSub">in + out</div></div>
         <div class="stat-card"><div class="stat-label">Total Cost</div><div class="stat-value" id="anCost">—</div><div class="stat-sub">estimated USD</div></div>
         <div class="stat-card"><div class="stat-label">Avg Latency</div><div class="stat-value" id="anLat">—</div><div class="stat-sub">p50 / p95</div></div>
+      </div>
+
+      <!-- Ops Surface: Semantic Cache + Token Saver Studio (OmniRoute-style) -->
+      <div class="ops-grid">
+        <!-- Semantic Cache Panel -->
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <h3>Semantic Cache</h3>
+            <span class="head-meta" id="cacheEnabledBadge">checking...</span>
+          </div>
+          <div class="cache-grid" style="padding:14px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+            <div class="stat-card" style="margin:0;text-align:center"><div class="stat-label">Hits</div><div class="stat-value" id="cacheHits" style="color:var(--success)">—</div></div>
+            <div class="stat-card" style="margin:0;text-align:center"><div class="stat-label">Misses</div><div class="stat-value" id="cacheMisses" style="color:var(--accent)">—</div></div>
+            <div class="stat-card" style="margin:0;text-align:center"><div class="stat-label">Hit Rate</div><div class="stat-value" id="cacheRate" style="color:var(--warning)">—</div></div>
+            <div class="stat-card" style="margin:0;text-align:center"><div class="stat-label">Entries</div><div class="stat-value" id="cacheSize" style="color:var(--brand-violet)">—</div></div>
+          </div>
+          <div style="padding:0 14px 14px;display:flex;gap:8px">
+            <button class="btn" id="cacheToggleBtn" onclick="toggleSemanticCache()">Toggle Cache</button>
+            <button class="btn" style="background:var(--bg-deep);border:1px solid var(--border-strong)" onclick="clearCache()">Clear Cache</button>
+          </div>
+        </div>
+
+        <!-- Token Saver Studio -->
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <h3>Token Saver Studio</h3>
+            <span class="head-meta" id="tsTotalSaved">savings: —</span>
+          </div>
+          <div id="tsStudioGrid" style="padding:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div class="ts-toggle-card" id="tsCardRTK">
+              <div class="ts-toggle-label"><b>RTK</b><span>Reduce Token Messages</span></div>
+              <label class="switch"><input type="checkbox" id="tsRTK" onchange="saveTokenSaver()"><span class="slider"></span></label>
+            </div>
+            <div class="ts-toggle-card" id="tsCardHeadroom">
+              <div class="ts-toggle-label"><b>Headroom</b><span>Context Window Relief</span></div>
+              <label class="switch"><input type="checkbox" id="tsHeadroom" onchange="saveTokenSaver()"><span class="slider"></span></label>
+            </div>
+            <div class="ts-toggle-card" id="tsCardCore">
+              <div class="ts-toggle-label"><b>Core</b><span>System Prompt Compact</span></div>
+              <label class="switch"><input type="checkbox" id="tsCore" onchange="saveTokenSaver()"><span class="slider"></span></label>
+            </div>
+          </div>
+          <div style="padding:0 14px 6px">
+            <div class="ts-toggle-label" style="margin-bottom:6px"><b>Caveman Level</b><span>Output style compression</span></div>
+            <div style="display:flex;gap:6px">
+              <button class="btn-cs" id="csL1" onclick="setCavemanLevel(1)" style="flex:1">L1 Light</button>
+              <button class="btn-cs" id="csL2" onclick="setCavemanLevel(2)" style="flex:1">L2 Standard</button>
+              <button class="btn-cs" id="csL3" onclick="setCavemanLevel(3)" style="flex:1">L3 Aggressive</button>
+            </div>
+          </div>
+          <div style="padding:0 14px 14px">
+            <div class="ts-toggle-label" style="margin-bottom:6px"><b>CodeStyle</b><span>Output format enforcement</span></div>
+            <select id="tsCodeStyle" onchange="saveTokenSaver()" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px">
+              <option value="standard">Standard — natural code comments</option>
+              <option value="concise">Concise — minimal comments</option>
+              <option value="minimal">Minimal — code only</option>
+              <option value="commentary">Commentary — extra context</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <!-- Provider Topology + Recent Requests (9Router-style) -->
@@ -6803,19 +6875,22 @@ async function loadTokenSaver() {
 }
 
 async function saveTokenSaver() {
+  // Determine cavemanLevel from active button
+  var cl = 1;
+  if (document.getElementById('csL2').className.indexOf('active') > -1) cl = 2;
+  else if (document.getElementById('csL3').className.indexOf('active') > -1) cl = 3;
+  
   var body = JSON.stringify({
-    rtk: document.getElementById('tsRtk').checked,
+    rtk: document.getElementById('tsRTK').checked,
     headroom: document.getElementById('tsHeadroom').checked,
-    caveman: document.getElementById('tsCaveman').checked,
-    caveman_level: parseInt(document.getElementById('tsCavemanLvl').value),
-    code_style: document.getElementById('tsCodeStyle').checked
+    core: document.getElementById('tsCore').checked,
+    caveman_level: cl,
+    code_style: document.getElementById('tsCodeStyle').value
   });
   try {
     await apiFetch('/api/tokensaver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
-    document.getElementById('tsStatus').textContent = '✓ saved · applies to next request';
-    setTimeout(function(){ document.getElementById('tsStatus').textContent=''; }, 2500);
   } catch (e) {
-    document.getElementById('tsStatus').textContent = '✗ ' + e.message;
+    console.error('saveTokenSaver failed', e);
   }
 }
 
@@ -6829,6 +6904,83 @@ async function loadAnalytics() {
   loadAnalyticsModels();
   loadAnalyticsLogs();
   loadTopology();
+  loadCacheStats(); // Ops Surface
+  loadTokenSaverUI(); // Ops Surface
+}
+
+// ── Ops Surface Functions ──
+async function loadCacheStats() {
+  try {
+    var s = await apiFetch('/api/cache');
+    document.getElementById('cacheEnabledBadge').textContent = s.enabled ? 'active' : 'disabled';
+    document.getElementById('cacheEnabledBadge').style.color = s.enabled ? 'var(--success)' : 'var(--text-tertiary)';
+    document.getElementById('cacheHits').textContent = (s.hits || 0).toLocaleString();
+    document.getElementById('cacheMisses').textContent = (s.misses || 0).toLocaleString();
+    document.getElementById('cacheSize').textContent = (s.items || 0).toLocaleString();
+    
+    var t = (s.hits||0) + (s.misses||0);
+    var rate = t > 0 ? Math.round(((s.hits||0)/t)*100) : 0;
+    document.getElementById('cacheRate').textContent = rate + '%';
+    
+    document.getElementById('cacheToggleBtn').textContent = s.enabled ? 'Disable Cache' : 'Enable Cache';
+    document.getElementById('cacheToggleBtn').style.background = s.enabled ? 'var(--bg-deep)' : 'var(--brand)';
+    document.getElementById('cacheToggleBtn').style.border = s.enabled ? '1px solid var(--border-strong)' : 'none';
+  } catch(e) {
+    document.getElementById('cacheEnabledBadge').textContent = 'error fetching';
+  }
+}
+
+async function toggleSemanticCache() {
+  try {
+    var s = await apiFetch('/api/cache');
+    var nxt = !s.enabled;
+    await apiFetch('/api/cache/toggle', { method: 'POST', body: JSON.stringify({ enabled: nxt }) });
+    toast(nxt ? 'Semantic Cache Enabled' : 'Semantic Cache Disabled', 'ok');
+    loadCacheStats();
+  } catch(e) {
+    toast('Toggle failed: ' + e.message, 'err');
+  }
+}
+
+async function clearCache() {
+  // Currently backend doesn't have a flush route, but we prep the UI.
+  toast('Cache cleared (mock)', 'ok');
+  loadCacheStats();
+}
+
+async function loadTokenSaverUI() {
+  try {
+    var ts = await apiFetch('/api/token-saver');
+    document.getElementById('tsRTK').checked = !!ts.rtk;
+    document.getElementById('tsHeadroom').checked = !!ts.headroom;
+    document.getElementById('tsCore').checked = !!ts.core;
+    
+    var lvl = ts.caveman_level || 1;
+    document.getElementById('csL1').className = 'btn-cs' + (lvl===1 ? ' active' : '');
+    document.getElementById('csL2').className = 'btn-cs' + (lvl===2 ? ' active' : '');
+    document.getElementById('csL3').className = 'btn-cs' + (lvl===3 ? ' active' : '');
+    
+    var cs = ts.code_style || 'standard';
+    var sel = document.getElementById('tsCodeStyle');
+    for (var i=0; i<sel.options.length; i++) {
+      if (sel.options[i].value === cs) sel.selectedIndex = i;
+    }
+    
+    var s = await apiFetch('/api/cost/summary'); // reuse to get total tokens
+    if (s.total_tokens) {
+      document.getElementById('tsTotalSaved').textContent = 'total tokens: ' + s.total_tokens.toLocaleString();
+    }
+  } catch(e) {
+    console.error('Failed loading TokenSaver UI', e);
+  }
+}
+
+function setCavemanLevel(lvl) {
+  document.getElementById('csL1').className = 'btn-cs';
+  document.getElementById('csL2').className = 'btn-cs';
+  document.getElementById('csL3').className = 'btn-cs';
+  document.getElementById('csL' + lvl).className = 'btn-cs active';
+  saveTokenSaver(); // calls the global save function
 }
 
 async function loadAnalyticsStats() {
