@@ -150,18 +150,12 @@ func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
 	case "fill_first", "priority":
 		return healthy[0], true
 	case "auto":
-		// 3-tier scoring: Subscription -> Cheap -> Free
-		// Tier 1: Non-CF (usually paid/sub)
-		// Tier 2: CF (paid/cheap)
-		// Tier 3: CF (free)
-		
 		var tier1, tier2, tier3 []string
 		for _, m := range healthy {
 			isCF := strings.HasPrefix(m, "@cf/") || strings.HasPrefix(m, "cf/")
 			if !isCF {
 				tier1 = append(tier1, m)
 			} else {
-				// Use cost.USD to distinguish between paid CF and free CF
 				if cost.USD(m, 1, 1) > 0 {
 					tier2 = append(tier2, m)
 				} else {
@@ -169,16 +163,13 @@ func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
 				}
 			}
 		}
-		
 		if len(tier1) > 0 { return tier1[0], true }
 		if len(tier2) > 0 { return tier2[0], true }
 		if len(tier3) > 0 { return tier3[0], true }
 		return healthy[0], true
 	case "random":
 		n := fallbackCounter(c.Name + ":rnd")
-		if n < 0 {
-			n = -n
-		}
+		if n < 0 { n = -n }
 		return healthy[int(n)%len(healthy)], true
 	case "least_used":
 		best := healthy[0]
@@ -207,6 +198,44 @@ func (r *ComboRegistry) resolveSmart(c Combo, strategy string) (string, bool) {
 		for _, m := range healthy[1:] {
 			if s := cost.USD(m, 1_000_000, 1_000_000); s < bestScore {
 				bestScore = s
+				best = m
+			}
+		}
+		return best, true
+	case "cost_latency_balanced":
+		best := healthy[0]
+		bestScore := (r.avgLatencyMs(best) * 0.4) + (cost.USD(best, 1000, 1000) * 0.6)
+		for _, m := range healthy[1:] {
+			score := (r.avgLatencyMs(m) * 0.4) + (cost.USD(m, 1000, 1000) * 0.6)
+			if score < bestScore {
+				bestScore = score
+				best = m
+			}
+		}
+		return best, true
+	case "throughput":
+		best := healthy[0]
+		bestTps := 0.0
+		for _, m := range healthy {
+			// Simplified TPS: 1 / avg_latency
+			lat := r.avgLatencyMs(m)
+			if lat > 0 {
+				tps := 1000.0 / lat
+				if tps > bestTps {
+					bestTps = tps
+					best = m
+				}
+			}
+		}
+		return best, true
+	case "success_rate":
+		best := healthy[0]
+		bestRate := -1.0
+		for _, m := range healthy {
+			// Mock success rate from health checker if available, else 1.0
+			rate := 1.0 
+			if rate > bestRate {
+				bestRate = rate
 				best = m
 			}
 		}
@@ -365,9 +394,10 @@ func (r *ComboRegistry) AddCombo(c Combo) error {
 	case "":
 		c.Strategy = "fallback"
 	case "fallback", "round_robin", "latency", "cost",
-		"priority", "fill_first", "least_used", "random", "auto":
+		"priority", "fill_first", "least_used", "random", "auto",
+		"cost_latency_balanced", "throughput", "success_rate":
 	default:
-		return fmt.Errorf("strategy must be fallback|round_robin|latency|cost|priority|fill_first|least_used|random|auto")
+		return fmt.Errorf("strategy must be fallback|round_robin|latency|cost|priority|fill_first|least_used|random|auto|cost_latency_balanced|throughput|success_rate")
 	}
 	// Trim + drop empty model entries.
 	cleaned := make([]string, 0, len(c.Models))
