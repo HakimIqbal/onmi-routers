@@ -384,6 +384,7 @@ func main() {
 	r.POST("/api/tokensaver", csrfGuard(), adminAuth, handleSetTokenSaver())
 	r.GET("/api/tokensaver/analytics", adminAuth, handleCompressionAnalytics())
 	r.POST("/api/tokensaver/preview", csrfGuard(), adminAuth, handleCompressionPreview())
+	r.POST("/api/tokensaver/preview/multi", csrfGuard(), adminAuth, handleCompressionPreviewMulti())
 
 	// ── Live server console (SSE) ──
 	r.GET("/console/stream", adminAuth, handleConsoleStream())

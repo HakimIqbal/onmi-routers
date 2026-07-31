@@ -98,6 +98,108 @@ func handleCompressionPreview() gin.HandlerFunc {
 	}
 }
 
+// handleCompressionPreviewMulti runs multiple engines independently (lanes)
+// plus an optional stacked pipeline, returning per-engine savings, word-level
+// diff, and step-by-step waterfall breakdowns. Powers the OmniRoute-style Studio.
+func handleCompressionPreviewMulti() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Text         string   `json:"text"`
+			Engines      []string `json:"engines"`
+			Stacked      []string `json:"stacked"`
+			FidelityGate bool     `json:"fidelity_gate"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid body"})
+			return
+		}
+		if req.Text == "" {
+			c.JSON(400, gin.H{"error": "text required"})
+			return
+		}
+		if len(req.Engines) == 0 {
+			req.Engines = []string{"rtk", "caveman", "lite", "ultra", "summarizer"}
+		}
+		opts := compression.Options{PreserveSystemPrompt: true}
+
+		// ── Run each engine as an independent lane ──
+		type laneJSON struct {
+			Engine           string                    `json:"engine"`
+			Compressed       bool                      `json:"compressed"`
+			OriginalTokens   int                       `json:"original_tokens"`
+			CompressedTokens int                       `json:"compressed_tokens"`
+			SavingsPercent   float64                   `json:"savings_percent"`
+			Techniques       []string                  `json:"techniques"`
+			Result           string                    `json:"result"`
+			Steps            []compression.StepBreakdown `json:"steps"`
+			Diff             []compression.DiffSegment `json:"diff"`
+		}
+		var lanes []laneJSON
+		for _, eng := range req.Engines {
+			body := compression.BuildBody(req.Text)
+			res := compression.ApplyEngine(body, eng, opts)
+			lane := laneJSON{Engine: eng}
+			if res.Compressed && res.Stats != nil {
+				resultText := compression.ExtractText(res.Body)
+				lane.Compressed = true
+				lane.OriginalTokens = res.Stats.OriginalTokens
+				lane.CompressedTokens = res.Stats.CompressedTokens
+				lane.SavingsPercent = res.Stats.SavingsPercent
+				lane.Techniques = res.Stats.TechniquesUsed
+				lane.Result = resultText
+				lane.Steps = []compression.StepBreakdown{{
+					Name:         eng,
+					TokensBefore: res.Stats.OriginalTokens,
+					TokensAfter:  res.Stats.CompressedTokens,
+					SavingsPct:   res.Stats.SavingsPercent,
+				}}
+				lane.Diff = compression.WordDiff(req.Text, resultText)
+			} else {
+				lane.Result = req.Text
+				lane.OriginalTokens = compression.EstimateTokensExported(req.Text)
+				lane.CompressedTokens = lane.OriginalTokens
+			}
+			lanes = append(lanes, lane)
+		}
+
+		// ── Stacked pipeline (engines run in sequence) ──
+		var stackedJSON *gin.H
+		if len(req.Stacked) > 1 {
+			body := compression.BuildBody(req.Text)
+			res, steps := compression.RunStacked(body, req.Stacked, opts)
+			if res.Compressed && res.Stats != nil {
+				resultText := compression.ExtractText(res.Body)
+				stackedJSON = &gin.H{
+					"pipeline":          req.Stacked,
+					"compressed":        true,
+					"original_tokens":   res.Stats.OriginalTokens,
+					"compressed_tokens": res.Stats.CompressedTokens,
+					"savings_percent":   res.Stats.SavingsPercent,
+					"result":            resultText,
+					"steps":             steps,
+					"diff":              compression.WordDiff(req.Text, resultText),
+				}
+			} else {
+				stackedJSON = &gin.H{
+					"pipeline":   req.Stacked,
+					"compressed": false,
+					"result":     req.Text,
+					"steps":      steps,
+				}
+			}
+		}
+
+		resp := gin.H{
+			"lanes":           lanes,
+			"original_tokens": compression.EstimateTokensExported(req.Text),
+		}
+		if stackedJSON != nil {
+			resp["stacked"] = stackedJSON
+		}
+		c.JSON(200, resp)
+	}
+}
+
 // handleSetTokenSaver updates + persists the Token Saver config.
 func handleSetTokenSaver() gin.HandlerFunc {
 	return func(c *gin.Context) {

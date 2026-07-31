@@ -289,6 +289,37 @@
 .studio-pct { font-family: var(--font-display); font-size: 18px; font-weight: 800; color: var(--brand); letter-spacing: -0.02em; }
 .studio-techniques { display: flex; gap: 6px; flex-wrap: wrap; min-height: 22px; }
 .studio-result { flex: 1; min-height: 120px; max-height: 320px; overflow: auto; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; margin: 0; }
+.studio-engines { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.engine-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.engine-toggle input { display: none; }
+.engine-toggle span { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-secondary); transition: all var(--tc); }
+.engine-toggle input:checked + span { border-color: var(--brand); background: var(--brand-subtle); color: var(--brand); box-shadow: 0 0 8px rgba(76,201,240,0.15); }
+.engine-toggle:hover span { border-color: var(--brand); transform: translateY(-1px); }
+.studio-options { display: flex; gap: 16px; align-items: center; margin-top: 12px; }
+.studio-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 14px; }
+.lane-card { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; cursor: pointer; transition: all var(--tc); text-align: center; }
+.lane-card:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.lane-card.active { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand), 0 4px 16px rgba(76,201,240,0.12); }
+.lane-card .lane-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); margin-bottom: 6px; }
+.lane-card .lane-savings { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--green); letter-spacing: -0.02em; }
+.lane-card .lane-savings.zero { color: var(--text-tertiary); }
+.lane-card .lane-tokens { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.lane-card .lane-techs { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 8px; }
+.studio-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 800px) { .studio-diff { grid-template-columns: 1fr; } }
+.studio-diff .diff-col { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.7; max-height: 260px; overflow: auto; }
+.studio-diff .diff-col-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 8px; }
+.diff-remove { background: rgba(255,85,85,0.15); color: #ff5555; text-decoration: line-through; border-radius: 2px; padding: 0 2px; }
+.diff-add { background: rgba(80,250,123,0.15); color: #50fa7b; text-decoration: underline; border-radius: 2px; padding: 0 2px; }
+.diff-keep { color: var(--text-secondary); }
+.studio-waterfall { display: flex; flex-direction: column; gap: 6px; }
+.wf-row { display: flex; align-items: center; gap: 10px; }
+.wf-label { font-size: 11px; color: var(--text-secondary); min-width: 90px; text-align: right; }
+.wf-track { flex: 1; height: 22px; background: var(--bg-input); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.wf-bar { height: 100%; background: linear-gradient(90deg, var(--brand), var(--brand-violet)); border-radius: 4px; transition: width 600ms cubic-bezier(0.16,1,0.3,1); display: flex; align-items: center; padding-left: 8px; }
+.wf-bar span { font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; }
+.wf-pct { font-size: 11px; font-weight: 700; color: var(--green); min-width: 44px; }
+.studio-stacked-stats { display: flex; gap: 16px; align-items: center; padding: 10px 14px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; }
 .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: 0 0 auto; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .switch .track { position: absolute; inset: 0; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 999px; transition: var(--tc); }
@@ -3254,33 +3285,39 @@ input:focus, select:focus, textarea:focus {
       </table>
     </div>
 
-    <!-- ── Compression Studio (playground) ── -->
+    <!-- ── Compression Studio (OmniRoute-style multi-engine playground) ── -->
     <div class="ts-card-single">
       <div class="panel-head" style="margin-bottom:14px">
         <h3>Compression Studio</h3>
-        <span class="head-meta">paste text → pick mode → preview savings (no live traffic touched)</span>
+        <span class="head-meta">multi-engine playground — no live traffic touched</span>
       </div>
-      <div class="studio-grid">
-        <div class="studio-input">
-          <textarea id="studioText" placeholder="Paste a prompt, tool output, or conversation here…" rows="9"></textarea>
-          <div class="studio-controls">
-            <select id="studioMode">
-              <option value="lite">Lite</option>
-              <option value="standard" selected>Standard</option>
-              <option value="aggressive">Aggressive</option>
-              <option value="ultra">Ultra</option>
-            </select>
-            <button class="btn-primary" id="studioRun" onclick="runStudio()">▶ Compress</button>
-          </div>
+      <div class="studio-input">
+        <textarea id="studioText" placeholder="Paste a prompt, tool output, or conversation here…" rows="8"></textarea>
+      </div>
+      <div class="studio-engines" id="studioEngines">
+        <label class="engine-toggle"><input type="checkbox" value="rtk" checked><span>RTK</span></label>
+        <label class="engine-toggle"><input type="checkbox" value="caveman" checked><span>Caveman</span></label>
+        <label class="engine-toggle"><input type="checkbox" value="lite" checked><span>Lite</span></label>
+        <label class="engine-toggle"><input type="checkbox" value="ultra"><span>Ultra</span></label>
+        <label class="engine-toggle"><input type="checkbox" value="summarizer"><span>Summarizer</span></label>
+      </div>
+      <div class="studio-options">
+        <label class="engine-toggle"><input type="checkbox" id="studioFidelity"><span>Fidelity Gate</span></label>
+        <button class="btn-primary" id="studioRunMulti" onclick="runStudioMulti()">▶ Compress All Lanes</button>
+      </div>
+      <!-- Results (hidden until run) -->
+      <div id="studioResults" style="display:none">
+        <div class="studio-lanes" id="studioLanes"></div>
+        <div id="studioStackedWrap" style="display:none;margin-top:14px">
+          <div class="panel-head" style="margin-bottom:8px"><h3 style="font-size:14px">Stacked Pipeline</h3><span class="head-meta" id="studioStackedLabel"></span></div>
+          <div class="studio-stacked-stats" id="studioStackedStats"></div>
+          <pre class="studio-result" id="studioStackedResult" style="max-height:200px"></pre>
         </div>
-        <div class="studio-output">
-          <div class="studio-stats" id="studioStats" style="display:none">
-            <span class="studio-stat"><b id="studioSaved">0</b> tokens saved</span>
-            <span class="studio-stat studio-pct" id="studioPct">0%</span>
-            <span class="studio-stat" id="studioTokens">0 → 0</span>
-          </div>
-          <div class="studio-techniques" id="studioTechniques"></div>
-          <pre class="studio-result" id="studioResult">Run a compression to see the result…</pre>
+        <div id="studioDetailWrap" style="display:none;margin-top:14px">
+          <div class="panel-head" style="margin-bottom:8px"><h3 style="font-size:14px" id="studioDetailTitle">Diff</h3></div>
+          <div class="studio-diff" id="studioDiff"></div>
+          <div class="studio-waterfall" id="studioWaterfall" style="margin-top:12px"></div>
+          <pre class="studio-result" id="studioDetailResult" style="max-height:200px;margin-top:10px"></pre>
         </div>
       </div>
     </div>
@@ -7658,40 +7695,107 @@ async function saveTokenSaver() {
   }
 }
 
-async function runStudio() {
+var _studioLaneData = [];
+async function runStudioMulti() {
   var text = document.getElementById('studioText').value.trim();
   if (!text) { toast('Paste some text first', 'err'); return; }
-  var mode = document.getElementById('studioMode').value;
-  var btn = document.getElementById('studioRun');
-  btn.disabled = true;
-  btn.textContent = '⏳ Compressing…';
+  var engines = [];
+  document.querySelectorAll('#studioEngines input:checked').forEach(function(cb) { engines.push(cb.value); });
+  if (!engines.length) { toast('Select at least one engine', 'err'); return; }
+  var btn = document.getElementById('studioRunMulti');
+  btn.disabled = true; btn.textContent = '⏳ Compressing…';
+  document.getElementById('studioResults').style.display = 'none';
   try {
-    var res = await apiFetch('/api/tokensaver/preview', {
+    var res = await apiFetch('/api/tokensaver/preview/multi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text, mode: mode })
+      body: JSON.stringify({ text: text, engines: engines, stacked: engines, fidelity_gate: document.getElementById('studioFidelity').checked })
     });
-    document.getElementById('studioStats').style.display = 'flex';
-    if (res.compressed) {
-      document.getElementById('studioSaved').textContent = res.saved_tokens;
-      document.getElementById('studioPct').textContent = res.savings_percent.toFixed(1) + '%';
-      document.getElementById('studioTokens').textContent = res.original_tokens + ' → ' + res.compressed_tokens;
-      document.getElementById('studioResult').textContent = res.result;
-      var techs = (res.techniques || []).map(function(t) { return '<span class="ts-mode-pill">' + escHtml(t) + '</span>'; }).join(' ');
-      document.getElementById('studioTechniques').innerHTML = techs;
-    } else {
-      document.getElementById('studioSaved').textContent = '0';
-      document.getElementById('studioPct').textContent = '0%';
-      document.getElementById('studioTokens').textContent = 'no change';
-      document.getElementById('studioResult').textContent = res.note || 'No compression applied';
-      document.getElementById('studioTechniques').innerHTML = '';
-    }
+    _studioLaneData = res.lanes || [];
+    var lanesEl = document.getElementById('studioLanes');
+    lanesEl.innerHTML = '';
+    _studioLaneData.forEach(function(lane, idx) {
+      var card = document.createElement('div');
+      card.className = 'lane-card';
+      card.dataset.idx = idx;
+      var pct = lane.compressed ? lane.savings_percent.toFixed(1) : '0.0';
+      var techs = (lane.techniques || []).map(function(t) { return '<span class="ts-mode-pill">' + escHtml(t) + '</span>'; }).join('');
+      card.innerHTML = '<div class="lane-name">' + escHtml(lane.engine) + '</div>'
+        + '<div class="lane-savings' + (lane.compressed ? '' : ' zero') + '">−' + pct + '%</div>'
+        + '<div class="lane-tokens">' + lane.original_tokens + ' → ' + lane.compressed_tokens + '</div>'
+        + (techs ? '<div class="lane-techs">' + techs + '</div>' : '');
+      card.onclick = function() { showLaneDetail(idx); };
+      lanesEl.appendChild(card);
+    });
+    // Stacked pipeline
+    var sw = document.getElementById('studioStackedWrap');
+    if (res.stacked && engines.length > 1) {
+      sw.style.display = 'block';
+      document.getElementById('studioStackedLabel').textContent = engines.join(' → ');
+      var st = res.stacked;
+      if (st.compressed) {
+        document.getElementById('studioStackedStats').innerHTML =
+          '<span class="studio-stat"><b>' + (st.original_tokens - st.compressed_tokens) + '</b> saved</span>'
+          + '<span class="studio-stat studio-pct">−' + st.savings_percent.toFixed(1) + '%</span>'
+          + '<span class="studio-stat">' + st.original_tokens + ' → ' + st.compressed_tokens + '</span>';
+        document.getElementById('studioStackedResult').textContent = st.result || '';
+      } else {
+        document.getElementById('studioStackedStats').innerHTML = '<span class="studio-stat">No net reduction</span>';
+        document.getElementById('studioStackedResult').textContent = '';
+      }
+    } else { sw.style.display = 'none'; }
+    document.getElementById('studioDetailWrap').style.display = 'none';
+    document.getElementById('studioResults').style.display = 'block';
+    if (_studioLaneData.length) showLaneDetail(0);
   } catch (e) {
-    toast('Studio preview failed: ' + e.message, 'err');
+    toast('Studio multi-preview failed: ' + e.message, 'err');
   } finally {
-    btn.disabled = false;
-    btn.textContent = '▶ Compress';
+    btn.disabled = false; btn.textContent = '▶ Compress All Lanes';
   }
+}
+function showLaneDetail(idx) {
+  var lane = _studioLaneData[idx];
+  if (!lane) return;
+  document.querySelectorAll('.lane-card').forEach(function(c) { c.classList.toggle('active', +c.dataset.idx === idx); });
+  var wrap = document.getElementById('studioDetailWrap');
+  wrap.style.display = 'block';
+  document.getElementById('studioDetailTitle').textContent = 'Diff — ' + lane.engine;
+  // Diff pane
+  var diffEl = document.getElementById('studioDiff');
+  if (lane.diff && lane.diff.length) {
+    var origHtml = '', compHtml = '';
+    lane.diff.forEach(function(seg) {
+      var t = escHtml(seg.text);
+      if (seg.type === 'keep') { origHtml += '<span class="diff-keep">' + t + '</span> '; compHtml += '<span class="diff-keep">' + t + '</span> '; }
+      else if (seg.type === 'remove') { origHtml += '<span class="diff-remove">' + t + '</span> '; }
+      else if (seg.type === 'add') { compHtml += '<span class="diff-add">' + t + '</span> '; }
+    });
+    diffEl.innerHTML = '<div class="diff-col"><div class="diff-col-title">Original</div>' + origHtml + '</div>'
+      + '<div class="diff-col"><div class="diff-col-title">Compressed</div>' + compHtml + '</div>';
+  } else {
+    diffEl.innerHTML = '<div class="diff-col"><div class="diff-col-title">No diff available</div><span class="diff-keep">' + escHtml(lane.result || '') + '</span></div>';
+  }
+  // Waterfall
+  var wfEl = document.getElementById('studioWaterfall');
+  var steps = lane.steps || [];
+  if (steps.length) {
+    var maxTokens = Math.max.apply(null, steps.map(function(s) { return s.tokens_before; }));
+    wfEl.innerHTML = steps.map(function(s) {
+      var w = maxTokens > 0 ? Math.round(s.tokens_after / maxTokens * 100) : 100;
+      return '<div class="wf-row"><div class="wf-label">' + escHtml(s.name) + '</div>'
+        + '<div class="wf-track"><div class="wf-bar" style="width:0%"><span>' + s.tokens_before + ' → ' + s.tokens_after + '</span></div></div>'
+        + '<div class="wf-pct">−' + s.savings_pct.toFixed(1) + '%</div></div>';
+    }).join('');
+    // Animate bars
+    requestAnimationFrame(function() {
+      wfEl.querySelectorAll('.wf-bar').forEach(function(bar, i) {
+        var s = steps[i];
+        var w = maxTokens > 0 ? Math.max(4, Math.round(s.tokens_after / maxTokens * 100)) : 100;
+        bar.style.width = w + '%';
+      });
+    });
+  } else { wfEl.innerHTML = ''; }
+  document.getElementById('studioDetailResult').textContent = lane.result || '';
 }
 
 /* ══════════════════════════════════════════════════════════
