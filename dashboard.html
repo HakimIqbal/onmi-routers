@@ -1159,6 +1159,82 @@ body {
   border-color: var(--border-bright);
 }
 
+/* ══════════════════════════════════════════════════════════
+   UI POLISH v2 (2026-07-31) — unified action system, status
+   fields, table density, chip cells. Applied across all pages.
+   ══════════════════════════════════════════════════════════ */
+
+/* Destructive action button (red outline) */
+.btn-danger {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid rgba(251,113,133,0.35);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 510;
+  cursor: pointer;
+  transition: all var(--tc);
+  font-family: var(--font);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-danger:hover { background: var(--red-subtle); border-color: var(--red); color: #FDA4AF; }
+
+/* Status field — read-only display that reads as status, not an editable input */
+.status-field {
+  background: transparent !important;
+  border: 1px dashed var(--border-strong) !important;
+  color: var(--text-tertiary) !important;
+  font-style: italic;
+}
+.status-field.has-value {
+  border-style: solid !important;
+  color: var(--brand) !important;
+  font-style: normal;
+}
+
+/* Sidebar footer readability boost */
+.sidebar-footer { color: var(--text-tertiary); }
+.sidebar-footer .status-row { font-weight: 500; letter-spacing: 0.02em; }
+
+/* Stat card value overflow guard (long numbers like 11842 stay tidy) */
+.stat-card .stat-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Dim zero-value table cells so they recede visually */
+.tbl td.zero, .data-table td.zero { color: var(--text-quaternary); }
+
+/* Model chip cell — truncate long model lists with a +N overflow chip */
+.chip-cell { display: flex; flex-wrap: wrap; gap: 4px; max-width: 440px; align-items: center; }
+.chip-cell .mchip {
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 7px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text-secondary); white-space: nowrap;
+  max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+}
+.chip-cell .mchip.more { color: var(--brand); border-color: var(--brand-subtle); cursor: pointer; flex-shrink: 0; }
+
+/* Unified table action buttons — consistent size, spacing, hover */
+.tbl .act-btn, .data-table .act-btn {
+  padding: 4px 10px; font-size: 11.5px; border-radius: var(--radius-xs);
+  border: 1px solid var(--border); background: var(--bg-elevated);
+  color: var(--text-secondary); cursor: pointer; transition: all var(--tc);
+  font-family: var(--font); white-space: nowrap;
+}
+.tbl .act-btn:hover, .data-table .act-btn:hover { border-color: var(--brand); color: var(--brand); }
+.tbl .act-btn.danger, .data-table .act-btn.danger { color: var(--red); border-color: rgba(251,113,133,0.25); }
+.tbl .act-btn.danger:hover, .data-table .act-btn.danger:hover { background: var(--red-subtle); border-color: var(--red); }
+.tbl td .act-group, .data-table td .act-group { display: inline-flex; gap: 6px; }
+
+/* Format badge (SHELL / JSON) for CLI tool cards */
+.fmt-badge {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 4px; text-transform: uppercase; flex-shrink: 0;
+}
+.fmt-badge.shell { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+.fmt-badge.json { background: rgba(76,201,240,0.10); color: var(--brand); border: 1px solid rgba(76,201,240,0.25); }
+
 .test-result {
   margin: 0 16px 12px;
   padding: 12px 14px;
@@ -2238,6 +2314,11 @@ input:focus, select:focus, textarea:focus {
           <div class="stat-value" id="cfCount">—</div>
           <div class="stat-sub" id="cfActive"></div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Latency (24h)</div>
+          <div class="stat-value" id="avgLatency">—</div>
+          <div class="stat-sub">successful requests</div>
+        </div>
       </div>
 
       <!-- Upstream Health -->
@@ -2250,7 +2331,7 @@ input:focus, select:focus, textarea:focus {
           <div class="tbl-scroll" style="max-height:200px">
             <table class="tbl">
               <thead><tr>
-                <th>Upstream</th><th>Circuit</th><th>Check</th><th>Latency</th><th>Requests</th><th>Errors</th><th>Error Rate</th><th>Last Error</th>
+                <th>Upstream</th><th>Circuit</th><th>Latency</th><th>Requests</th><th>Errors</th><th>Error Rate</th><th>Last Error</th>
               </tr></thead>
               <tbody id="healthBody"></tbody>
             </table>
@@ -2421,12 +2502,12 @@ input:focus, select:focus, textarea:focus {
           </div>
           <div class="endpoint-row">
             <label>Tunnel</label>
-            <input id="endpointTunnelUrl" class="mono-box" readonly value="Not enabled" style="opacity:.85" />
+            <input id="endpointTunnelUrl" class="mono-box status-field" readonly value="Not enabled" />
             <button class="btn-ghost" type="button" id="endpointTunnelBtn" onclick="openEndpointTunnelModal()" style="padding:8px 12px;background:rgba(168,85,247,.15);border-color:rgba(168,85,247,.4);color:#E9D5FF">Enable</button>
           </div>
           <div class="endpoint-row">
             <label>Tailscale</label>
-            <input id="endpointTailscaleUrl" class="mono-box" readonly value="Checking…" style="opacity:.85" />
+            <input id="endpointTailscaleUrl" class="mono-box status-field" readonly value="Checking…" />
             <button class="btn-ghost" type="button" id="endpointTailscaleBtn" onclick="openEndpointTailscaleModal()" style="padding:8px 12px;background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.35);color:#7DD3FC">Details</button>
           </div>
         </div>
@@ -2510,23 +2591,21 @@ input:focus, select:focus, textarea:focus {
               <label style="font-size:11px;color:var(--text-tertiary);display:block;margin-bottom:4px">Strategy</label>
               <select id="cbxStrategy" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px">
               <optgroup label="── Basic ──" disabled style="color:var(--text-tertiary)"></optgroup>
-              <option value="fallback">Fallback — coba urut sampai sukses</option>
-              <option value="round_robin">Round Robin — rotasi merata</option>
-              <option value="random">Random — acak tiap request</option>
-              <option value="priority">Priority — alias fallback eksplisit</option>
-              <option value="fill_first">Fill First — tempel ke model pertama yang sehat</option>
+              <option value="fallback">Fallback — try in order until success</option>
+              <option value="round_robin">Round Robin — rotate evenly</option>
+              <option value="random">Random — shuffle per request</option>
+              <option value="priority">Priority — explicit fallback order</option>
+              <option value="fill_first">Fill First — stick to first healthy model</option>
               <optgroup label="── Smart ──" disabled style="color:var(--text-tertiary)"></optgroup>
               <option value="auto">Auto — 3-tier: Subscription → Cheap → Free</option>
-              <option value="least_used">Least Used — pilih model paling jarang dipakai</option>
+              <option value="least_used">Least Used — rarest-used model first</option>
               <optgroup label="── Performance ──" disabled style="color:var(--text-tertiary)"></optgroup>
-              <option value="latency">Latency — pilih upstream paling cepat</option>
-              <option value="throughput">Throughput — pilih token/sec tertinggi</option>
-              <option value="success_rate">Success Rate — pilih upstream paling stabil</option>
+              <option value="latency">Latency — fastest upstream first</option>
+              <option value="throughput">Throughput — highest tokens/sec</option>
+              <option value="success_rate">Success Rate — most stable upstream</option>
               <optgroup label="── Cost ──" disabled style="color:var(--text-tertiary)"></optgroup>
-              <option value="cost">Cost — pilih model paling murah</option>
-              <option value="cost_latency_balanced">Cost+Latency — skor gabungan harga & kecepatan</option>
-                <option value="latency">Latency (terendah)</option>
-                <option value="cost">Cost (termurah USD)</option>
+              <option value="cost">Cost — cheapest model first</option>
+              <option value="cost_latency_balanced">Cost+Latency — combined price & speed score</option>
               </select>
             </div>
             <div>
@@ -3005,7 +3084,7 @@ input:focus, select:focus, textarea:focus {
           <div style="margin-left:auto;display:flex;gap:8px">
             <button class="btn-ghost" onclick="loadTunnelStatus()" style="padding:6px 12px;font-size:12px">Refresh</button>
             <button class="btn-ghost" onclick="tunnelRestart()" style="padding:6px 12px;font-size:12px">Restart</button>
-            <button class="btn-ghost" onclick="tunnelDisable()" style="padding:6px 12px;font-size:12px;color:var(--red)">Disable</button>
+            <button class="btn-danger" onclick="tunnelDisable()" style="padding:6px 12px;font-size:12px">Disable</button>
           </div>
         </div>
 
@@ -3044,7 +3123,7 @@ input:focus, select:focus, textarea:focus {
             <span style="font-size:11px;color:var(--text-tertiary)">Recent cloudflared logs (last 400 lines per subprocess)</span>
             <span id="tunLogsMeta" style="font-size:11px;color:var(--text-tertiary)"></span>
           </div>
-          <pre id="tunLogs" style="max-height:220px;overflow:auto;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:10px;font-family:var(--mono);font-size:11px;color:var(--text-secondary);margin:0;white-space:pre-wrap;word-break:break-word">no output yet</pre>
+          <pre id="tunLogs" style="max-height:220px;overflow:auto;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:10px;font-family:var(--mono);font-size:11px;color:var(--text-secondary);margin:0;white-space:pre-wrap;word-break:break-word">No output yet — logs appear here once a tunnel is running.</pre>
         </div>
       </div>
     </div>
@@ -3295,15 +3374,15 @@ input:focus, select:focus, textarea:focus {
         <textarea id="studioText" placeholder="Paste a prompt, tool output, or conversation here…" rows="8"></textarea>
       </div>
       <div class="studio-engines" id="studioEngines">
-        <label class="engine-toggle"><input type="checkbox" value="rtk" checked><span>RTK</span></label>
-        <label class="engine-toggle"><input type="checkbox" value="caveman" checked><span>Caveman</span></label>
-        <label class="engine-toggle"><input type="checkbox" value="lite" checked><span>Lite</span></label>
-        <label class="engine-toggle"><input type="checkbox" value="ultra"><span>Ultra</span></label>
-        <label class="engine-toggle"><input type="checkbox" value="summarizer"><span>Summarizer</span></label>
+        <label class="engine-toggle" title="Regex Toolkit — strip filler words & whitespace"><input type="checkbox" value="rtk" checked><span>RTK</span></label>
+        <label class="engine-toggle" title="Caveman — aggressive prose shortening"><input type="checkbox" value="caveman" checked><span>Caveman</span></label>
+        <label class="engine-toggle" title="Lite engine — near-lossless cleanup"><input type="checkbox" value="lite" checked><span>Lite</span></label>
+        <label class="engine-toggle" title="Ultra engine — heuristic token pruning (lossy)"><input type="checkbox" value="ultra"><span>Ultra</span></label>
+        <label class="engine-toggle" title="Summarizer — condense long content"><input type="checkbox" value="summarizer"><span>Summarizer</span></label>
       </div>
       <div class="studio-options">
-        <label class="engine-toggle"><input type="checkbox" id="studioFidelity"><span>Fidelity Gate</span></label>
-        <button class="btn-primary" id="studioRunMulti" onclick="runStudioMulti()">▶ Compress All Lanes</button>
+        <label class="engine-toggle" title="Reject lossy results that save less than 3%"><input type="checkbox" id="studioFidelity"><span>Fidelity Gate</span></label>
+        <button class="btn-primary" id="studioRunMulti" onclick="runStudioMulti()">▶ Run All Engines</button>
       </div>
       <!-- Results (hidden until run) -->
       <div id="studioResults" style="display:none">
@@ -3505,7 +3584,7 @@ input:focus, select:focus, textarea:focus {
         <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-tertiary)">
           <input type="checkbox" id="conAutoscroll" checked style="width:14px;height:14px;accent-color:var(--brand)"> auto-scroll
         </label>
-        <button class="btn" onclick="clearConsole()">Clear</button>
+        <button class="btn-ghost" onclick="clearConsole()" style="padding:5px 12px;font-size:12px">Clear</button>
       </div>
       <div id="conLog" class="con-log"></div>
     </div>
@@ -3858,13 +3937,11 @@ function renderHealthRow(name, u) {
   if (lastErr === '' || lastErr === 'null') lastErr = '—';
   return '<tr>' +
     '<td class="mono">' + escHtml(name) + '</td>' +
-    '<td>' + circuitBadge(u.circuit_state || 'closed') + '</td>' +
-    '<td title="' + escAttr((u.last_error_msg || '') + ' @ ' + (u.last_check_at || '')) + '">' +
-      sdot(checkOk) + checkLabel + (reason ? '<span class="muted" style="font-size:10px">' + escHtml(reason) + '</span>' : '') +
-    '</td>' +
+    '<td title="probe ' + checkLabel + ' @ ' + escAttr(u.last_check_at || '') + '">' + circuitBadge(u.circuit_state || 'closed') +
+      (checkOk ? '' : ' <span class="muted" style="font-size:10px">probe fail</span>') + '</td>' +
     '<td class="mono" title="probe ' + lat + ' · avg traffic ' + avg + 'ms">' + lat + '</td>' +
     '<td class="mono">' + reqs + '</td>' +
-    '<td class="mono">' + errs + '</td>' +
+    '<td class="mono' + (errs > 0 ? '' : ' zero') + '">' + errs + '</td>' +
     '<td class="mono">' + rate + '</td>' +
     '<td class="muted" style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escAttr(lastErr) + '">' + escHtml(lastErr) + '</td>' +
   '</tr>';
@@ -4509,6 +4586,8 @@ async function loadHistory() {
     var errClass = totalErr > 0 ? 'err' : '';
     // Format latency for readability (ms / s)
     var avgLatLabel = avgLat >= 1000 ? ((avgLat/1000).toFixed(1) + 's') : (avgLat + 'ms');
+    var avgLatCard = document.getElementById('avgLatency');
+    if (avgLatCard) avgLatCard.textContent = avgLat > 0 ? avgLatLabel : '—';
     statsEl.innerHTML =
       '<div class="history-stat"><div class="label">Requests (24h)</div><div class="value">' + totalReq + '</div></div>' +
       '<div class="history-stat"><div class="label">Errors</div><div class="value ' + errClass + '">' + totalErr + '</div></div>' +
@@ -5164,7 +5243,7 @@ async function loadModels() {
     });
 
     var html = '';
-    var ownerLabels = { xai: 'Grok (xAI)', codebuddy: 'CodeBuddy', cloudflare: 'Cloudflare Workers AI', combo: 'Combos', custom: 'Custom' };
+    var ownerLabels = { xai: 'Grok (xAI)', codebuddy: 'CodeBuddy', cloudflare: 'Cloudflare Workers AI', combo: 'Combos', custom: 'Custom Aliases' };
     var ownerColors = { xai: '#8b5cf6', codebuddy: '#22d3ee', cloudflare: '#f59e0b', combo: '#22c55e', custom: '#ec4899' };
 
     for (var owner in groups) {
@@ -5225,11 +5304,11 @@ async function loadModels() {
             '<td class="mono">' + escHtml(id) + '</td>' +
             '<td>' + typeLabel + '</td>' +
             '<td>' + membersHtml + '</td>' +
-            '<td class="num" title="' + (hasUsage ? 'from /history?hours=' + hours : 'no traffic in window') + '">' + (reqs > 0 ? formatNum(reqs) : '—') + '</td>' +
-            '<td class="num">' + (tokIn > 0 ? formatNum(tokIn) : '—') + '</td>' +
-            '<td class="num">' + (tokOut > 0 ? formatNum(tokOut) : '—') + '</td>' +
-            '<td class="num">' + avgLat + '</td>' +
-            '<td class="num" style="' + errStyle + '">' + (errs > 0 ? formatNum(errs) : '—') + '</td>' +
+            '<td class="num' + (reqs > 0 ? '' : ' zero') + '" title="' + (hasUsage ? 'from /history?hours=' + hours : 'no traffic in window') + '">' + (reqs > 0 ? formatNum(reqs) : '—') + '</td>' +
+            '<td class="num' + (tokIn > 0 ? '' : ' zero') + '">' + (tokIn > 0 ? formatNum(tokIn) : '—') + '</td>' +
+            '<td class="num' + (tokOut > 0 ? '' : ' zero') + '">' + (tokOut > 0 ? formatNum(tokOut) : '—') + '</td>' +
+            '<td class="num' + (latMs > 0 ? '' : ' zero') + '">' + avgLat + '</td>' +
+            '<td class="num' + (errs > 0 ? '' : ' zero') + '" style="' + errStyle + '">' + (errs > 0 ? formatNum(errs) : '—') + '</td>' +
             '<td class="ctr"><button class="btn-ghost quick-test-btn" data-model="' + escAttr(id) + '">Test</button></td>' +
             '<td class="ctr"><button class="btn-ghost view-combo-btn" data-name="' + escAttr(comboName) + '" style="padding:4px 10px;font-size:11px;color:var(--brand)">View</button></td>' +
           '</tr>';
@@ -5254,11 +5333,11 @@ async function loadModels() {
           '<td class="mono">' + escHtml(id) + (isHidden ? ' <span style="font-size:10px;color:var(--text-tertiary)">(hidden)</span>' : '') + '</td>' +
           '<td>' + typeLabel + '</td>' +
           '<td>' + modelCaps(id) + '</td>' +
-          '<td class="num" title="' + (hasUsage ? 'from /history?hours=' + hours : 'no traffic in window') + '">' + (reqs > 0 ? formatNum(reqs) : '—') + '</td>' +
-          '<td class="num">' + (tokIn > 0 ? formatNum(tokIn) : '—') + '</td>' +
-          '<td class="num">' + (tokOut > 0 ? formatNum(tokOut) : '—') + '</td>' +
-          '<td class="num">' + avgLat + '</td>' +
-          '<td class="num" style="' + errStyle + '">' + (errs > 0 ? formatNum(errs) : '—') + '</td>' +
+          '<td class="num' + (reqs > 0 ? '' : ' zero') + '" title="' + (hasUsage ? 'from /history?hours=' + hours : 'no traffic in window') + '">' + (reqs > 0 ? formatNum(reqs) : '—') + '</td>' +
+          '<td class="num' + (tokIn > 0 ? '' : ' zero') + '">' + (tokIn > 0 ? formatNum(tokIn) : '—') + '</td>' +
+          '<td class="num' + (tokOut > 0 ? '' : ' zero') + '">' + (tokOut > 0 ? formatNum(tokOut) : '—') + '</td>' +
+          '<td class="num' + (latMs > 0 ? '' : ' zero') + '">' + avgLat + '</td>' +
+          '<td class="num' + (errs > 0 ? '' : ' zero') + '" style="' + errStyle + '">' + (errs > 0 ? formatNum(errs) : '—') + '</td>' +
           '<td class="ctr"><button class="btn-ghost quick-test-btn" data-model="' + escAttr(id) + '">Test</button></td>' +
           '<td class="ctr">' + actionBtn + '</td>' +
         '</tr>';
@@ -5926,16 +6005,18 @@ function renderCFPage() {
       var quotaLimit = (a.quota_limit && a.quota_limit > 0) ? a.quota_limit : '—';
       var remain = (a.quota_limit && a.quota_limit > 0) ? a.quota_remain : '—';
       var disAt = (a.disabled_at && a.disabled_at !== '0001-01-01T00:00:00Z') ? a.disabled_at : '—';
+      var qUsed = a.quota_used || 0;
+      var reqs = a.total_requests || 0;
       tr.innerHTML =
         '<td><code style="font-size:11px">' + escHtml(a.account_id) + '</code></td>' +
         '<td><code style="font-size:11px">' + escHtml(a.token || '') + '</code></td>' +
-        '<td>' + (a.quota_used || 0) + '</td>' +
-        '<td>' + quotaLimit + '</td>' +
-        '<td>' + remain + '</td>' +
-        '<td>' + (a.total_requests || 0) + '</td>' +
-        '<td style="font-size:11px">' + escHtml(String(disAt)) + '</td>' +
+        '<td class="' + (qUsed > 0 ? '' : 'zero') + '">' + qUsed + '</td>' +
+        '<td class="' + (quotaLimit !== '—' ? '' : 'zero') + '">' + quotaLimit + '</td>' +
+        '<td class="' + (remain !== '—' ? '' : 'zero') + '">' + remain + '</td>' +
+        '<td class="' + (reqs > 0 ? '' : 'zero') + '">' + reqs + '</td>' +
+        '<td class="' + (disAt !== '—' ? '' : 'zero') + '" style="font-size:11px">' + escHtml(String(disAt)) + '</td>' +
         '<td>' + status + '</td>' +
-        '<td><button class="btn-ghost" onclick="deleteCFAccount(\'' + encodeURIComponent(a.account_id) + '\')" style="padding:3px 8px;font-size:11px;color:var(--danger)">Delete</button></td>';
+        '<td><span class="act-group"><button class="act-btn danger" onclick="deleteCFAccount(\'' + encodeURIComponent(a.account_id) + '\')">Delete</button></span></td>';
       body.appendChild(tr);
     });
   }
@@ -6145,11 +6226,11 @@ async function refreshEndpointTunnelRow() {
     if (!url && st.public_url) url = String(st.public_url);
     if (url) {
       urlEl.value = url;
-      urlEl.style.opacity = '1';
+      urlEl.classList.add('has-value');
       if (btn) btn.textContent = 'Manage';
     } else {
       urlEl.value = mode === 'none' ? 'Not enabled' : ('Mode: ' + mode + ' (no URL yet)');
-      urlEl.style.opacity = '0.85';
+      urlEl.classList.remove('has-value');
       if (btn) btn.textContent = 'Enable';
     }
     var box = document.getElementById('epTunStatusBox');
@@ -6225,22 +6306,22 @@ async function refreshEndpointTailscale(fromModal) {
     window._epTailscaleUrl = url || '';
     if (d.ok && url) {
       urlEl.value = url;
-      urlEl.style.opacity = '1';
+      urlEl.classList.add('has-value');
       if (btn) btn.textContent = 'Details';
       if (fromModal) toast('Tailscale status updated — ' + (d.dns_name || 'online'), 'ok');
     } else if (d.installed && !d.running) {
       urlEl.value = 'Installed · not running';
-      urlEl.style.opacity = '0.85';
+      urlEl.classList.remove('has-value');
       if (btn) btn.textContent = 'Setup';
       if (fromModal) toast('Tailscale installed but not running', 'warn');
     } else if (!d.installed) {
       urlEl.value = 'Not installed';
-      urlEl.style.opacity = '0.85';
+      urlEl.classList.remove('has-value');
       if (btn) btn.textContent = 'Info';
       if (fromModal) toast('Tailscale is not installed on this host', 'warn');
     } else {
       urlEl.value = 'Unavailable';
-      urlEl.style.opacity = '0.85';
+      urlEl.classList.remove('has-value');
       if (fromModal) toast('Tailscale status unavailable', 'warn');
     }
     var box = document.getElementById('epTsStatusBox');
@@ -7131,9 +7212,12 @@ async function loadCombos() {
         'cost_latency_balanced': '<span class="strat-badge strat-clb">Cost+Latency</span>',
       };
       var strategyBadge = stratBadgeMap[strategy] || '<span class="strat-badge strat-fb">Fallback</span>';
-      var modelsHtml = models.map(function(m) {
-        return '<code style="font-family:var(--mono);font-size:11px;padding:1px 6px;background:var(--bg);border-radius:3px;margin-right:4px;display:inline-block;margin-bottom:2px">' + escHtml(m) + '</code>';
-      }).join('');
+      // Compact chip cell: first 3 models + "+N" overflow chip (full list in tooltip)
+      var shown = models.slice(0, 3);
+      var modelsHtml = '<div class="chip-cell">' +
+        shown.map(function(m) { return '<span class="mchip" title="' + escAttr(m) + '">' + escHtml(m) + '</span>'; }).join('') +
+        (models.length > 3 ? '<span class="mchip more" title="' + escAttr(models.join('\n')) + '">+' + (models.length - 3) + '</span>' : '') +
+        '</div>';
       return '<tr>' +
         '<td style="padding:8px;border-bottom:1px solid var(--border);font-family:var(--mono);color:var(--brand)">combo/' + escHtml(name) + '</td>' +
         '<td style="padding:8px;border-bottom:1px solid var(--border)">' + strategyBadge + '</td>' +
@@ -7750,7 +7834,7 @@ async function runStudioMulti() {
   } catch (e) {
     toast('Studio multi-preview failed: ' + e.message, 'err');
   } finally {
-    btn.disabled = false; btn.textContent = '▶ Compress All Lanes';
+    btn.disabled = false; btn.textContent = '▶ Run All Engines';
   }
 }
 function showLaneDetail(idx) {
@@ -8026,6 +8110,13 @@ function renderUaModelTable() {
   }
   // derive provider breakdown per model from recent logs
   var provMap = buildProviderMap();
+  // Auto-switch to tokens view when all costs are zero (empty cost columns are noise)
+  var totalCostAll = models.reduce(function(s, m) { return s + (m.total_cost_usd || 0); }, 0);
+  if (_uaModelMode === 'costs' && totalCostAll === 0) {
+    _uaModelMode = 'tokens';
+    var modeBtns = document.querySelectorAll('#uaModelMode button');
+    modeBtns.forEach(function(b) { b.classList.toggle('active', b.textContent === 'Tokens'); });
+  }
   var isCost = _uaModelMode === 'costs';
   var estTag = ' <span class="ua-est" title="Estimated: backend reports total cost only; in/out split is approximated by token ratio">(est.)</span>';
   var mh = '<table class="data-table"><thead><tr>' +
@@ -8384,7 +8475,7 @@ function startConsoleStream() {
   fetch('/console/stream', { headers: headers, credentials: 'same-origin', signal: _conAbort.signal })
     .then(function(resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      st.className = 'status-badge live'; st.innerHTML = '<span class="dot"></span>live';
+      st.className = 'status-badge live'; st.innerHTML = '<span class="dot"></span>SSE stream';
       _conES = true; // mark connected
       var reader = resp.body.getReader();
       var decoder = new TextDecoder();
@@ -8480,13 +8571,19 @@ async function loadCLITools() {
       var c = clients[name]; if (!c) return;
       var m = meta[name] || {label:name, ico:'<circle cx="12" cy="12" r="8"/>'};
       var snippet = '';
+      var isShell = false;
       if (c.env) {
         snippet = Object.keys(c.env).map(function(k){ return 'export '+k+'="'+c.env[k]+'"'; }).join('\n');
+        isShell = true;
       } else if (c.config) {
         snippet = JSON.stringify(c.config, null, 2);
       }
+      var fmtBadge = isShell
+        ? '<span class="fmt-badge shell" title="Run in your shell / add to .bashrc or .zshrc">shell</span>'
+        : '<span class="fmt-badge json" title="Paste into the tool\'s JSON config file">json</span>';
       cards += '<div class="cli-card">'+
         '<div class="cli-head"><span><svg class="cli-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+m.ico+'</svg>'+m.label+'</span>'+
+          fmtBadge +
           '<button class="btn" onclick="copyText(this)" data-copy="'+escAttr(snippet)+'">Copy</button>'+
         '</div>'+
         '<pre>'+escHtml(snippet)+'</pre>'+
@@ -8495,10 +8592,26 @@ async function loadCLITools() {
     if (cards) html += '<div class="cli-grid">'+cards+'</div>';
     else html += '<div class="empty-state"><strong>No client configs</strong>Gateway returned no client snippets.</div>';
     if ((cfg.models||[]).length) {
+      // Group models by family for scannability
+      var fams = { grok: [], codebuddy: [], cloudflare: [], combos: [], other: [] };
+      (cfg.models||[]).forEach(function(m){
+        if (m.indexOf('grok') === 0) fams.grok.push(m);
+        else if (m.indexOf('cb/') === 0) fams.codebuddy.push(m);
+        else if (m.indexOf('@cf/') === 0 || m.indexOf('cf/') === 0) fams.cloudflare.push(m);
+        else if (m.indexOf('combo/') === 0) fams.combos.push(m);
+        else fams.other.push(m);
+      });
+      var famLabels = { grok: 'Grok', codebuddy: 'CodeBuddy', cloudflare: 'Cloudflare', combos: 'Combos', other: 'Other' };
+      var chipsHtml = '';
+      Object.keys(fams).forEach(function(f){
+        if (!fams[f].length) return;
+        chipsHtml += '<div style="margin-bottom:10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-tertiary);font-weight:600;margin-bottom:5px">'+famLabels[f]+' · '+fams[f].length+'</div>'+
+          '<div class="model-chips" style="padding:0">'+fams[f].map(function(m){
+            return '<button class="model-chip" type="button" onclick="copyText(this)" data-copy="'+escAttr(m)+'" title="Copy model id">'+escHtml(m)+'</button>';
+          }).join('')+'</div></div>';
+      });
       html += '<div class="panel cli-models" style="margin:0"><div class="panel-head"><h3>Available Models</h3><span class="head-meta">'+(cfg.models||[]).length+' models · click to copy</span></div>'+
-        '<div class="model-chips">'+(cfg.models||[]).map(function(m){
-          return '<button class="model-chip" type="button" onclick="copyText(this)" data-copy="'+escAttr(m)+'" title="Copy model id">'+escHtml(m)+'</button>';
-        }).join('')+'</div></div>';
+        '<div style="padding:12px 16px">'+chipsHtml+'</div></div>';
     }
     body.innerHTML = html;
   } catch(e) {
