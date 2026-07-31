@@ -1422,6 +1422,8 @@ body {
 .topo-node .lbl { fill: var(--text-primary); font-size: 13px; font-weight: 600; font-family: var(--font-display); letter-spacing: -0.01em; }
 .topo-node.router rect:not(.badge) { fill: var(--logo-bg); stroke: rgba(255,255,255,0.16); }
 .topo-node.router .lbl { fill: #fff; font-weight: 700; }
+.topo-node.router.router-live rect:not(.badge) { stroke: #facc15; stroke-width: 2; }
+.topo-node.router.router-live .lbl { fill: #fde047; }
 .topo-node circle.pulse { animation: topo-pulse 1.6s ease-in-out infinite; }
 @keyframes topo-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 .topo-zoom {
@@ -8305,19 +8307,46 @@ async function loadTopology() {
     var rec = await apiFetch('/history/recent?limit=40');
     var reqs = rec.recent_requests || rec.logs || [];
     var now = Date.now();
+    // Track the REAL timestamp of the most recent request per upstream.
+    // (Previous bug: every upstream was stamped with `now`, so the 60s
+    //  expiry never fired and every provider looked permanently active.)
+    var seen = {};
+    var lastSet = false;
     reqs.forEach(function(r){
       var up = (r.upstream || '').toLowerCase();
       if (!up) return;
-      _topoActive[up] = now;
-      _topoLast = up;
+      var t = r.timestamp ? new Date(String(r.timestamp).replace(' ', 'T')).getTime() : 0;
+      if (isNaN(t) || t <= 0) t = now; // unparseable → assume fresh
+      if (!seen[up] || t > seen[up]) seen[up] = t;
+      if (!lastSet) { _topoLast = up; lastSet = true; } // reqs are newest-first
       if (r.status_code && r.status_code >= 400) _topoError = up;
     });
-    Object.keys(_topoActive).forEach(function(k){
-      if (now - _topoActive[k] > 60000) delete _topoActive[k];
+    // 9router semantics: a provider is "active" iff it served traffic
+    // within the last 60 seconds.
+    _topoActive = {};
+    Object.keys(seen).forEach(function(up){
+      if (now - seen[up] < 60000) _topoActive[up] = seen[up];
     });
     renderTopology();
     renderRecentRequests(reqs);
+    startTopoTick();
   } catch (e) { /* non-fatal */ }
+}
+
+// While any provider is active, re-render periodically so the 60s expiry
+// is reflected (nodes/edges dim back to idle once traffic stops).
+var _topoTick = null;
+function startTopoTick() {
+  if (_topoTick) return;
+  _topoTick = setInterval(function(){
+    var now = Date.now();
+    var changed = false;
+    Object.keys(_topoActive).forEach(function(k){
+      if (now - _topoActive[k] > 60000) { delete _topoActive[k]; changed = true; }
+    });
+    if (changed) renderTopology();
+    if (!Object.keys(_topoActive).length) { clearInterval(_topoTick); _topoTick = null; }
+  }, 5000);
 }
 
 var _topoZoom = 1;
@@ -8363,14 +8392,36 @@ function renderTopology() {
   svg += '<filter id="topoGlow" x="-60%" y="-60%" width="220%" height="220%">';
   svg += '<feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>';
   svg += '</filter>';
+  svg += '<filter id="topoBlur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>';
   svg += '</defs>';
   // zoom about canvas center
   svg += '<g transform="translate(' + (cx * (1 - z)) + ',' + ((H / 2) * (1 - z)) + ') scale(' + z + ')">';
 
   function edge(x1, y1, x2, y2, cls) {
     var my = (y1 + y2) / 2;
-    return '<path class="topo-edge ' + (cls || '') + '" d="M' + x1 + ' ' + y1 +
-      ' C ' + x1 + ' ' + my + ' ' + x2 + ' ' + my + ' ' + x2 + ' ' + y2 + '"/>';
+    var d = 'M' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + my + ' ' + x2 + ' ' + my + ' ' + x2 + ' ' + y2;
+    if (cls !== 'active') {
+      return '<path class="topo-edge ' + (cls || '') + '" d="' + d + '"/>';
+    }
+    // 9router-style electric edge: cyan halo → green plasma → dashed white core
+    // → energy particles + sparkle trail flowing along the path.
+    var s = '';
+    s += '<path d="' + d + '" fill="none" stroke="#22d3ee" stroke-width="10" stroke-opacity="0.30" stroke-linecap="round" filter="url(#topoBlur)"/>';
+    s += '<path d="' + d + '" fill="none" stroke="#4ade80" stroke-width="5" stroke-opacity="0.80" stroke-linecap="round" filter="url(#topoBlur)"/>';
+    s += '<path class="topo-edge active" d="' + d + '" style="stroke:#f8fafc;stroke-width:2.2;opacity:1"/>';
+    var i;
+    for (i = 0; i < 6; i++) {
+      var pr = (i % 2 === 0) ? 4 : 2.5;
+      var pc = (i % 3 === 0) ? '#fde047' : (i % 3 === 1) ? '#67e8f9' : '#ffffff';
+      s += '<circle r="' + pr + '" fill="' + pc + '" opacity="0.95" style="filter:drop-shadow(0 0 4px #22d3ee)">' +
+        '<animateMotion dur="' + (0.4 + 0.08 * i).toFixed(2) + 's" repeatCount="indefinite" path="' + d + '" begin="' + (0.09 * i).toFixed(2) + 's"/></circle>';
+    }
+    for (i = 0; i < 5; i++) {
+      s += '<circle r="1.8" fill="#e0f2fe" opacity="0">' +
+        '<animate attributeName="opacity" values="0;1;0;0;1;0" dur="' + (0.35 + (i % 3) * 0.1).toFixed(2) + 's" begin="' + (0.07 * i).toFixed(2) + 's" repeatCount="indefinite"/>' +
+        '<animateMotion dur="' + (0.28 + 0.05 * i).toFixed(2) + 's" repeatCount="indefinite" path="' + d + '" begin="' + (0.11 * i).toFixed(2) + 's"/></circle>';
+    }
+    return s;
   }
 
   // Cloudflare -> Router edge
@@ -8382,12 +8433,14 @@ function renderTopology() {
   });
 
   // ── Node renderer (icon badge + label + status dot) ──
+  var _activeCount = Object.keys(_topoActive).length;
   function node(nd) {
     var isRouter = nd.kind === 'router';
+    var routerLive = isRouter && _activeCount > 0;
     var w = isRouter ? 150 : 158, h = isRouter ? 46 : 40;
     var x = nd.x - w / 2, y = nd.y - h / 2;
-    var cls = 'topo-node' + (isRouter ? ' router' : '') + (nd.active ? ' active' : '');
-    var s = '<g class="' + cls + '"' + (nd.active ? ' filter="url(#topoGlow)"' : '') + '>';
+    var cls = 'topo-node' + (isRouter ? ' router' : '') + (nd.active ? ' active' : '') + (routerLive ? ' router-live' : '');
+    var s = '<g class="' + cls + '"' + ((nd.active || routerLive) ? ' filter="url(#topoGlow)"' : '') + '>';
     s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="12"/>';
     // icon badge
     var bx = x + 8, by = y + (h - 24) / 2;
@@ -8409,6 +8462,12 @@ function renderTopology() {
     if (!isRouter) {
       var dotCol = nd.active ? 'var(--green)' : 'var(--text-tertiary)';
       s += '<circle class="' + (nd.active ? 'pulse' : '') + '" cx="' + (x + w - 14) + '" cy="' + nd.y + '" r="4" fill="' + dotCol + '"/>';
+    }
+    // 9router-style active-count badge on the router hub
+    if (routerLive) {
+      var bxx = x + w - 10, byy = y - 8;
+      s += '<circle cx="' + bxx + '" cy="' + byy + '" r="9" fill="#facc15" stroke="#060A14" stroke-width="2"/>';
+      s += '<text x="' + bxx + '" y="' + (byy + 3.5) + '" text-anchor="middle" font-size="10" font-weight="700" fill="#060A14" font-family="var(--mono)">' + _activeCount + '</text>';
     }
     s += '</g>';
     return s;
