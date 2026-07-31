@@ -20,6 +20,12 @@ import (
 type Config struct {
 	mu sync.RWMutex
 
+	// Mode is the OmniRoute-style compression intensity: off/lite/standard/
+	// aggressive/ultra. When set to anything but "off", it drives the new
+	// compression pipeline (see internal/compression). Default "off" keeps the
+	// legacy toggle-based behavior below fully intact.
+	Mode string `json:"mode"`
+
 	RTK       bool `json:"rtk"`        // input tool_result compression (see internal/rtk)
 	Headroom  bool `json:"headroom"`   // context/history compression directive
 	Caveman   bool `json:"caveman"`    // terse output directive
@@ -28,22 +34,23 @@ type Config struct {
 }
 
 // DefaultConfig returns RTK on, others off (RTK is the lowest-risk win).
+// Mode defaults to "off" so existing installs keep legacy behavior.
 func DefaultConfig() *Config {
-	return &Config{RTK: true, Headroom: false, Caveman: false, CavemanLevel: 2, CodeStyle: false}
+	return &Config{Mode: "off", RTK: true, Headroom: false, Caveman: false, CavemanLevel: 2, CodeStyle: false}
 }
 
 // Get returns a copy-safe snapshot.
 func (c *Config) Get() Config {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return Config{RTK: c.RTK, Headroom: c.Headroom, Caveman: c.Caveman, CavemanLevel: c.CavemanLevel, CodeStyle: c.CodeStyle}
+	return Config{Mode: c.Mode, RTK: c.RTK, Headroom: c.Headroom, Caveman: c.Caveman, CavemanLevel: c.CavemanLevel, CodeStyle: c.CodeStyle}
 }
 
 // Set updates the config (used by admin API + Redis load).
-func (c *Config) Set(r bool, headroom bool, caveman bool, cavemanLevel int, codeStyle bool) {
+func (c *Config) Set(mode string, r bool, headroom bool, caveman bool, cavemanLevel int, codeStyle bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.RTK, c.Headroom, c.Caveman, c.CavemanLevel, c.CodeStyle = r, headroom, caveman, cavemanLevel, codeStyle
+	c.Mode, c.RTK, c.Headroom, c.Caveman, c.CavemanLevel, c.CodeStyle = mode, r, headroom, caveman, cavemanLevel, codeStyle
 }
 
 // AnyEnabled reports whether any saver is active.
@@ -161,5 +168,8 @@ func (c *Config) FromJSON(s string) {
 	if v.CavemanLevel == 0 {
 		v.CavemanLevel = 2
 	}
-	c.Set(v.RTK, v.Headroom, v.Caveman, v.CavemanLevel, v.CodeStyle)
+	if v.Mode == "" {
+		v.Mode = "off"
+	}
+	c.Set(v.Mode, v.RTK, v.Headroom, v.Caveman, v.CavemanLevel, v.CodeStyle)
 }

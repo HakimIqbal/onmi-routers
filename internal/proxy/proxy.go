@@ -21,6 +21,7 @@ import (
 
 	"foxrouters/internal/auth"
 	"foxrouters/internal/cache"
+	"foxrouters/internal/compression"
 	"foxrouters/internal/cost"
 	"foxrouters/internal/db"
 	"foxrouters/internal/guardrails"
@@ -43,6 +44,12 @@ var RTKEnabled = os.Getenv("RTK_ENABLED") != "false"
 
 // SemanticCache stores recent non-stream chat responses (exact key).
 var SemanticCache = cache.New(5*time.Minute, 512)
+
+// recordCompression logs a compression result into the analytics tracker so
+// the dashboard can show real measured token savings.
+func recordCompression(stats *compression.Stats) {
+	compression.Record(stats)
+}
 
 // QuotaTracker tracks live pool/spend per upstream family.
 var QuotaTracker = quota.New()
@@ -357,12 +364,42 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 			body, _ = json.Marshal(bodyMap)
 		}
 
-		// ── Token Saver (RTK input + Headroom + Caveman/CodeStyle) ──
-		// RTK compresses tool_result / function_call_output blobs in-place.
-		// Headroom drops old turns when context is long.
-		// Caveman/CodeStyle inject a terse-output system directive.
+		// ── Token Saver ──
+		// Two paths:
+		//   1. OmniRoute-style compression pipeline (mode != "off"): runs the
+		//      full lite/standard/aggressive/ultra engine with measured stats.
+		//      Aggressive mode already includes RTK tool-result compression
+		//      internally, so the legacy RTK step is skipped to avoid double work.
+		//   2. Legacy toggle path (mode == "off"): RTK + Headroom + directive,
+		//      preserved for backward compatibility.
 		cfg := TokenSaver.Get()
-		if cfg.RTK && RTKEnabled {
+		compMode := compression.ParseMode(cfg.Mode)
+		// Per-combo compression override: a combo may pin its own mode
+		// (combo.CompressionMode), which wins over the global Token Saver mode.
+		// Empty/"off" on the combo falls back to the global setting.
+		if combos != nil && strings.HasPrefix(model, "combo/") {
+			if cb, ok := combos.GetCombo(strings.TrimPrefix(model, "combo/")); ok && cb.CompressionMode != "" {
+				compMode = compression.ParseMode(cb.CompressionMode)
+			}
+		}
+		if compMode != compression.ModeOff {
+			res := compression.Apply(bodyMap, compMode, compression.Options{
+				Model:                model,
+				PreserveSystemPrompt: true,
+			})
+			if res.Compressed && res.Stats != nil {
+				bodyMap = res.Body
+				body, _ = json.Marshal(bodyMap)
+				recordCompression(res.Stats)
+				slog.Info("[compression] saved tokens",
+					"mode", string(compMode),
+					"before", res.Stats.OriginalTokens,
+					"after", res.Stats.CompressedTokens,
+					"savings_pct", res.Stats.SavingsPercent,
+					"techniques", res.Stats.TechniquesUsed)
+			}
+		} else if cfg.RTK && RTKEnabled {
+			// Legacy RTK-only input compression.
 			if stats := rtk.CompressMessages(bodyMap); stats != nil {
 				if log := rtk.FormatLog(stats); log != "" {
 					slog.Info(log)
@@ -550,7 +587,7 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 		//
 		//   Streaming (SSE) requests skip retry: once the first byte hits
 		//   the wire we cannot un-send it. They use the head model only.
-		if comboName != "" && comboStrategy == "fallback" && !clientStream {
+		if comboName != "" && (comboStrategy == "fallback" || comboStrategy == "fill_first" || comboStrategy == "priority") && !clientStream {
 			// Snapshot the concrete-model chain from the combo.
 			cb, _ := combos.GetCombo(comboName)
 			// Walk models[0..N-1]; model already holds models[0] (resolved
@@ -599,8 +636,10 @@ func ProxyRequest(grokAM *upstream.GrokAccountManager, cbKM *upstream.CBKeyManag
 				c.Writer = origWriter
 				model = candModel // track last-tried for logging
 
-				// 2xx / 3xx / 4xx — final. 4xx isn't retried (client error).
-				if bw.status < 500 {
+				// 2xx / 3xx — final success.
+				// 4xx — retry on 404 (model removed from upstream), bail on others (client error).
+				// 5xx — retry (upstream failure).
+				if bw.status < 500 && bw.status != 404 {
 					lastRecorder = bw
 					break
 				}

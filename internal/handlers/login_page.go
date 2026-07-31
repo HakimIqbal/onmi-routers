@@ -40,9 +40,10 @@ body {
   box-shadow: var(--shadow-modal);
 }
 .login-logo {
-  width: 48px; height: 48px; border-radius: var(--radius);
-  background: var(--brand); display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 20px; color: #fff; box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+  width: 48px; height: 48px; border-radius: 12px;
+  background: #454065; display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px; color: #fff;
+  box-shadow: 0 4px 14px rgba(40,36,66,0.55), inset 0 0 0 1px rgba(255,255,255,0.08);
 }
 .login-title { text-align: center; font-size: 20px; font-weight: 590; margin-bottom: 6px; }
 .login-sub { text-align: center; font-size: 13px; color: var(--text-tertiary); margin-bottom: 28px; }
@@ -73,15 +74,14 @@ body {
 <body>
 <div class="login-card">
   <div class="login-logo">
-    <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 4L11 12L6 10L8 4Z" fill="currentColor"/>
-      <path d="M24 4L21 12L26 10L24 4Z" fill="currentColor"/>
-      <path d="M16 7C11 7 7 11 7 16C7 20 10 23 16 25C22 23 25 20 25 16C25 11 21 7 16 7Z" fill="currentColor"/>
-      <path d="M12 15C13 14 14 14 16 14C18 14 19 14 20 15" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linecap="round" fill="none"/>
-      <path d="M11 17C13 16 14.5 16 16 16C17.5 16 19 16 21 17" stroke="rgba(255,255,255,0.7)" stroke-width="1.2" stroke-linecap="round" fill="none"/>
-      <circle cx="13" cy="13" r="1.2" fill="rgba(255,255,255,0.95)"/>
-      <circle cx="19" cy="13" r="1.2" fill="rgba(255,255,255,0.95)"/>
-      <circle cx="16" cy="19" r="1" fill="rgba(255,255,255,0.9)"/>
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="2.7"/>
+      <circle cx="12" cy="5.2" r="1.7"/>
+      <circle cx="12" cy="18.8" r="1.7"/>
+      <circle cx="6.8" cy="7" r="1.7"/>
+      <circle cx="17.2" cy="7" r="1.7"/>
+      <circle cx="6.8" cy="17" r="1.7"/>
+      <circle cx="17.2" cy="17" r="1.7"/>
     </svg>
   </div>
   <div class="login-title">OnmiRouters</div>

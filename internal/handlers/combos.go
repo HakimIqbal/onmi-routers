@@ -16,10 +16,11 @@ import (
 
 // comboInput is the wire schema for POST /api/combos.
 type comboInput struct {
-	Name        string   `json:"name"`
-	Strategy    string   `json:"strategy"`
-	Models      []string `json:"models"`
-	Description string   `json:"description"`
+	Name            string   `json:"name"`
+	Strategy        string   `json:"strategy"`
+	Models          []string `json:"models"`
+	Description     string   `json:"description"`
+	CompressionMode string   `json:"compression_mode"` // per-combo override: off/lite/standard/aggressive/ultra
 }
 
 // HandleListCombos: GET /api/combos → { combos: [Combo, ...] }.
@@ -67,10 +68,11 @@ func HandleAddCombo(reg *proxy.ComboRegistry) gin.HandlerFunc {
 			return
 		}
 		combo := db.Combo{
-			Name:        in.Name,
-			Strategy:    in.Strategy,
-			Models:      in.Models,
-			Description: in.Description,
+			Name:            in.Name,
+			Strategy:        in.Strategy,
+			Models:          in.Models,
+			Description:     in.Description,
+			CompressionMode: in.CompressionMode,
 		}
 		if err := reg.AddCombo(combo); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})

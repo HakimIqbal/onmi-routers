@@ -667,18 +667,44 @@ func extractCFText(data string) (text string, usage map[string]any) {
 // chat.completion JSON (used for non-stream clients).
 func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
 	defer resp.Body.Close()
+	// Read entire body first — avoids issues with streaming body being
+	// consumed or closed before the scanner can read it.
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	var content strings.Builder
+	var reasoning strings.Builder
 	var finish string
-	var usage map[string]any
+	// Accumulate usage across chunks (CF sends incremental per-chunk usage).
+	accPrompt := 0.0
+	accCompletion := 0.0
+	accTotal := 0.0
+	accNeurons := 0.0
+	var usageSeen bool
+
+	accumulateUsage := func(u map[string]any) {
+		if u == nil {
+			return
+		}
+		usageSeen = true
+		if v, ok := u["prompt_tokens"].(float64); ok {
+			accPrompt += v
+		}
+		if v, ok := u["completion_tokens"].(float64); ok {
+			accCompletion += v
+		}
+		if v, ok := u["total_tokens"].(float64); ok {
+			accTotal += v
+		}
+		if v, ok := u["neurons"].(float64); ok {
+			accNeurons += v
+		}
+	}
 
 	// Non-SSE JSON body (some CF models return application/json)
 	ct := resp.Header.Get("Content-Type")
 	if strings.Contains(ct, "application/json") && !strings.Contains(ct, "event-stream") {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		raw := bodyBytes
 		text, u := extractCFText(string(raw))
-		if u != nil {
-			usage = u
-		}
+		accumulateUsage(u)
 		// Also try whole-body OpenAI shape
 		if text == "" {
 			var full map[string]any
@@ -693,13 +719,13 @@ func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
 					}
 				}
 				if u, ok := full["usage"].(map[string]any); ok {
-					usage = u
+					accumulateUsage(u)
 				}
 			}
 		}
 		content.WriteString(text)
 	} else {
-		scanner := bufio.NewScanner(resp.Body)
+		scanner := bufio.NewScanner(bytes.NewReader(bodyBytes))
 		scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -710,8 +736,10 @@ func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
 					if text != "" {
 						content.WriteString(text)
 					}
-					if u != nil {
-						usage = u
+					accumulateUsage(u)
+					// Capture reasoning_content as fallback
+					if rc := extractCFReasoning(line); rc != "" {
+						reasoning.WriteString(rc)
 					}
 				}
 				continue
@@ -724,13 +752,21 @@ func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
 			if text != "" {
 				content.WriteString(text)
 			}
-			if u != nil {
-				usage = u
+			accumulateUsage(u)
+			// Capture reasoning_content as fallback for reasoning models
+			if rc := extractCFReasoning(data); rc != "" {
+				reasoning.WriteString(rc)
 			}
 		}
 	}
 	if finish == "" {
 		finish = "stop"
+	}
+	// Reasoning models (gemma-4, etc.) put all output in reasoning_content.
+	// If content is empty but reasoning exists, use reasoning as the response.
+	finalContent := content.String()
+	if finalContent == "" && reasoning.Len() > 0 {
+		finalContent = reasoning.String()
 	}
 	resp2 := gin.H{
 		"id":      "chatcmpl-" + time.Now().Format("20060102150405"),
@@ -739,14 +775,41 @@ func cfCollectStream(resp *http.Response, model string, key *CFKey) gin.H {
 		"model":   model,
 		"choices": []gin.H{{
 			"index":         0,
-			"message":       gin.H{"role": "assistant", "content": content.String()},
+			"message":       gin.H{"role": "assistant", "content": finalContent},
 			"finish_reason": finish,
 		}},
 	}
-	if usage != nil {
-		resp2["usage"] = usage
+	if usageSeen {
+		u := map[string]any{
+			"prompt_tokens":     accPrompt,
+			"completion_tokens": accCompletion,
+			"total_tokens":      accTotal,
+		}
+		if accNeurons > 0 {
+			u["neurons"] = accNeurons
+		}
+		resp2["usage"] = u
 	}
 	return resp2
+}
+
+// extractCFReasoning pulls reasoning_content from a Workers AI SSE chunk.
+// Reasoning models (gemma-4, etc.) stream thinking tokens in delta.reasoning_content.
+func extractCFReasoning(data string) string {
+	var raw map[string]any
+	if json.Unmarshal([]byte(data), &raw) != nil {
+		return ""
+	}
+	if choices, ok := raw["choices"].([]any); ok && len(choices) > 0 {
+		if ch, ok := choices[0].(map[string]any); ok {
+			if delta, ok := ch["delta"].(map[string]any); ok {
+				if s, ok := delta["reasoning_content"].(string); ok {
+					return s
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // ProxyCloudflare forwards a chat/completions request to Cloudflare Workers AI.
@@ -794,6 +857,7 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 	var lastStatus int
 	var lastBodySnippet string
 	var consecutive404 int
+	var successAttemptCancel context.CancelFunc
 	var sawAuthFail, saw429, saw5xx, sawNetErr bool
 	reqStart := time.Now()
 
@@ -823,8 +887,8 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		req.Header.Set("Accept", "text/event-stream")
 
 		resp, err := client.Do(req)
-		attemptCancel()
 		if err != nil {
+			attemptCancel()
 			markProxyResult(proxyID, err, 0)
 			sawNetErr = true
 			lastBodySnippet = err.Error()
@@ -836,6 +900,7 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		if resp.StatusCode == 401 || resp.StatusCode == 403 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
+			attemptCancel()
 			sawAuthFail = true
 			lastBodySnippet = truncateLog(string(bodyBytes), 160)
 			permanentDisableCF(key, fmt.Sprintf("%d %s", resp.StatusCode, lastBodySnippet))
@@ -845,6 +910,7 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		if resp.StatusCode == 429 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
+			attemptCancel()
 			saw429 = true
 			lastBodySnippet = truncateLog(string(bodyBytes), 160)
 			retryAfter := parseRetryAfter(string(bodyBytes), resp.Header.Get("Retry-After"))
@@ -859,6 +925,7 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
+			attemptCancel()
 			lastBodySnippet = truncateLog(string(bodyBytes), 160)
 			// 404 model-not-found is model availability, not key health.
 			// Fail fast after a few consecutive 404s — don't burn the farm.
@@ -883,15 +950,18 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		if resp.StatusCode >= 500 {
 			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 			resp.Body.Close()
+			attemptCancel()
 			saw5xx = true
 			lastBodySnippet = truncateLog(string(bodyBytes), 120)
 			hc.CF.RecordRequest(time.Since(reqStart), fmt.Errorf("upstream %d", resp.StatusCode))
 			continue
 		}
 
-		// Success path
+		// Success path — do NOT cancel attemptCtx here; body is still open
+		// and will be read by cfCollectStream / streaming loop below.
 		lastResp = resp
 		lastKey = key
+		successAttemptCancel = attemptCancel
 		break
 	}
 
@@ -998,6 +1068,9 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 				flusher.Flush()
 			}
 		}
+		if successAttemptCancel != nil {
+			successAttemptCancel()
+		}
 		c.Set("output_text", truncateLog(streamContent.String(), 1000))
 		respJSON, _ := json.Marshal(gin.H{
 			"choices": []gin.H{{"message": gin.H{"role": "assistant", "content": streamContent.String()}, "finish_reason": "stop"}},
@@ -1007,6 +1080,9 @@ func ProxyCloudflare(c *gin.Context, body []byte, bodyMap map[string]any, km *CF
 		c.Set("response_body", json.RawMessage(respJSON))
 	} else {
 		result := cfCollectStream(lastResp, originalModel, lastKey)
+		if successAttemptCancel != nil {
+			successAttemptCancel()
+		}
 		c.JSON(200, result)
 		if respBytes, err := json.Marshal(result); err == nil {
 			c.Set("response_body", json.RawMessage(respBytes))

@@ -1003,10 +1003,11 @@ func (s *Store) DeleteHiddenModel(id string) error {
 //   Strategy "round_robin" — atomic INCR of combo:counter:<name> selects the
 //                            next model modulo len(Models) per request.
 type Combo struct {
-	Name        string   `json:"name"`
-	Strategy    string   `json:"strategy"`    // "fallback" | "round_robin"
-	Models      []string `json:"models"`      // ordered list of model IDs
-	Description string   `json:"description"` // optional
+	Name            string   `json:"name"`
+	Strategy        string   `json:"strategy"`         // "fallback" | "round_robin"
+	Models          []string `json:"models"`           // ordered list of model IDs
+	Description     string   `json:"description"`      // optional
+	CompressionMode string   `json:"compression_mode"` // per-combo override: off/lite/standard/aggressive/ultra (empty = use global)
 }
 
 // LoadCombos returns every persisted combo keyed by name.

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"foxrouters/internal/compression"
 	"foxrouters/internal/console"
 	"foxrouters/internal/proxy"
 	"github.com/gin-gonic/gin"
@@ -22,10 +23,86 @@ func handleGetTokenSaver() gin.HandlerFunc {
 	}
 }
 
+// handleCompressionAnalytics returns real measured compression savings
+// (total tokens saved, savings %, per-mode breakdown, recent receipts).
+func handleCompressionAnalytics() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(200, compression.Analytics())
+	}
+}
+
+// handleCompressionPreview runs the compression pipeline on a caller-supplied
+// text WITHOUT touching live traffic. Powers the Compression Studio playground:
+// paste text → pick a mode → see before/after + measured savings + techniques.
+func handleCompressionPreview() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Text     string `json:"text"`
+			Mode     string `json:"mode"`
+			Model    string `json:"model"`
+			Provider string `json:"provider"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid body"})
+			return
+		}
+		if req.Text == "" {
+			c.JSON(400, gin.H{"error": "text required"})
+			return
+		}
+		mode := compression.ParseMode(req.Mode)
+		if mode == compression.ModeOff {
+			c.JSON(400, gin.H{"error": "mode must be one of lite/standard/aggressive/ultra"})
+			return
+		}
+		body := map[string]any{
+			"messages": []any{
+				map[string]any{"role": "user", "content": req.Text},
+			},
+		}
+		res := compression.Apply(body, mode, compression.Options{
+			Model:                req.Model,
+			Provider:             req.Provider,
+			PreserveSystemPrompt: true,
+		})
+		if !res.Compressed || res.Stats == nil {
+			c.JSON(200, gin.H{
+				"compressed":   false,
+				"original":     req.Text,
+				"result":       req.Text,
+				"note":         "no net reduction (fidelity gate or no compressible content)",
+				"mode":         string(mode),
+			})
+			return
+		}
+		// Extract the compressed text back out of the body.
+		result := req.Text
+		if msgs, ok := res.Body["messages"].([]any); ok && len(msgs) > 0 {
+			if mm, ok := msgs[0].(map[string]any); ok {
+				if s, ok := mm["content"].(string); ok {
+					result = s
+				}
+			}
+		}
+		c.JSON(200, gin.H{
+			"compressed":        true,
+			"mode":              string(mode),
+			"original":          req.Text,
+			"result":            result,
+			"original_tokens":   res.Stats.OriginalTokens,
+			"compressed_tokens": res.Stats.CompressedTokens,
+			"saved_tokens":      res.Stats.OriginalTokens - res.Stats.CompressedTokens,
+			"savings_percent":   res.Stats.SavingsPercent,
+			"techniques":        res.Stats.TechniquesUsed,
+		})
+	}
+}
+
 // handleSetTokenSaver updates + persists the Token Saver config.
 func handleSetTokenSaver() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
+			Mode         *string `json:"mode"`
 			RTK          *bool `json:"rtk"`
 			Headroom     *bool `json:"headroom"`
 			Caveman      *bool `json:"caveman"`
@@ -37,6 +114,11 @@ func handleSetTokenSaver() gin.HandlerFunc {
 			return
 		}
 		cur := TokenSaverCfg.Get()
+		if req.Mode != nil {
+			// validate mode; reject unknown values
+			m := compression.ParseMode(*req.Mode)
+			cur.Mode = string(m)
+		}
 		if req.RTK != nil {
 			cur.RTK = *req.RTK
 		}
@@ -52,7 +134,7 @@ func handleSetTokenSaver() gin.HandlerFunc {
 		if req.CodeStyle != nil {
 			cur.CodeStyle = *req.CodeStyle
 		}
-		TokenSaverCfg.Set(cur.RTK, cur.Headroom, cur.Caveman, cur.CavemanLevel, cur.CodeStyle)
+		TokenSaverCfg.Set(cur.Mode, cur.RTK, cur.Headroom, cur.Caveman, cur.CavemanLevel, cur.CodeStyle)
 		// Sync into proxy hot-path global.
 		proxy.TokenSaver = TokenSaverCfg
 		// Persist to Redis.
@@ -60,6 +142,7 @@ func handleSetTokenSaver() gin.HandlerFunc {
 			_ = rc.Set(context.Background(), "tokensaver:cfg", TokenSaverCfg.ToJSON(), 0).Err()
 		}
 		c.JSON(200, gin.H{
+			"mode":          cur.Mode,
 			"rtk":      cur.RTK,
 			"headroom": cur.Headroom,
 			"caveman":       cur.Caveman,

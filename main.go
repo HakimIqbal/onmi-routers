@@ -227,7 +227,23 @@ func main() {
 	}()
 
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
+	r := gin.New()
+	// Custom logger: redact ?key= query param so gateway keys never hit logs
+	r.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
+		path := p.Path
+		if idx := strings.Index(path, "key="); idx > 0 {
+			// Strip key=... up to next & or end
+			end := strings.IndexByte(path[idx:], '&')
+			if end < 0 {
+				path = path[:idx] + "key=***"
+			} else {
+				path = path[:idx] + "key=***" + path[idx+end:]
+			}
+		}
+		return fmt.Sprintf("[GIN] %s | %3d | %13v | %15s | %-7s %s\n",
+			p.TimeStamp.Format("2006/01/02 - 15:04:05"), p.StatusCode, p.Latency, p.ClientIP, p.Method, path)
+	}))
+	r.Use(gin.Recovery())
 	// P2-1: Don't trust X-Forwarded-For/X-Real-IP from clients.
 	// Without this, attackers spoof XFF to bypass IP-based rate limits
 	// (login limiter) and IP-based tracking. RemoteAddr is the real source.
@@ -366,6 +382,8 @@ func main() {
 	// ── Token Saver (RTK + Caveman + CodeStyle) admin API ──
 	r.GET("/api/tokensaver", adminAuth, handleGetTokenSaver())
 	r.POST("/api/tokensaver", csrfGuard(), adminAuth, handleSetTokenSaver())
+	r.GET("/api/tokensaver/analytics", adminAuth, handleCompressionAnalytics())
+	r.POST("/api/tokensaver/preview", csrfGuard(), adminAuth, handleCompressionPreview())
 
 	// ── Live server console (SSE) ──
 	r.GET("/console/stream", adminAuth, handleConsoleStream())

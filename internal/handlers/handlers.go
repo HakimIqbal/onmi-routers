@@ -759,6 +759,13 @@ func HandleUpdateKey(am *auth.Manager) gin.HandlerFunc {
 		}
 		if req.Role != nil && (*req.Role == auth.RoleAdmin || *req.Role == auth.RoleInference) {
 			role = *req.Role
+			// P3-1: prevent last-admin lockout via role demotion.
+			if *req.Role == auth.RoleInference {
+				if info, ok := am.Get(fullKey); ok && info.Role == auth.RoleAdmin && am.CountAdmins() <= 1 {
+					c.JSON(409, gin.H{"error": "cannot demote the last admin key — create another admin key first"})
+					return
+				}
+			}
 		}
 		if req.AllowedModels != nil {
 			allowedModels = *req.AllowedModels
