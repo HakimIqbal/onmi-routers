@@ -32,3 +32,7 @@ stress_test_v2.py
 # Allow skills/ (project skill, not global)
 !skills/
 !skills/**
+
+# Compiled binary
+onmi-routers
+*.bak*
